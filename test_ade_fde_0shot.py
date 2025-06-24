@@ -10,6 +10,7 @@ from model import STCRF
 from CFG import CFG
 import os
 import random
+from datetime import datetime
 
 def test(KSTEPS=1):
 
@@ -98,147 +99,224 @@ def test(KSTEPS=1):
     return ade_, fde_
 
 
-for ROBUSTNESS in [0]:  #[-0.1, -0.01, 0, +0.01, +0.1]:
-    print("*" * 30)
-    print("*" * 30)
-    print("ROBUSTNESS:", ROBUSTNESS)
-    print("*" * 30)
-    print("*" * 30)
-    def seed_torch(seed=42):
-        random.seed(seed)
-        os.environ['PYTHONHASHSEED'] = str(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed) # if you are using multi-GPU.
-        torch.backends.cudnn.benchmark = False
-        torch.backends.cudnn.deterministic = True
-    seed_torch()
+def seed_torch(seed=42):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed) # if you are using multi-GPU.
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
 
-    # paths = [
-    #     './checkpoint/stcrf_eth',
-    #     './checkpoint/stcrf_hotel',
-    #     './checkpoint/stcrf_univ',
-    #     './checkpoint/stcrf_zara1',
-    #     './checkpoint/stcrf_zara2',
-    # ]
-    #### for zero-shot prediction
-    paths = [
-        './checkpoint/stcrf_eth'
-    ]## training model on the dataset
-    test_data ='hotel' ## testing model on the dataset
+# Set random seed for reproducibility
+seed_torch()
 
-    KSTEPS = 1## use this metric to evaluate the model
+# Define all available datasets and their corresponding checkpoint paths
+available_datasets = ['eth', 'hotel', 'univ', 'zara1', 'zara2', 'sdd']
+checkpoint_datasets = ['eth', 'hotel', 'univ', 'zara1', 'zara2']  # Datasets with trained models
 
-    EASY_RESULTS = []
+# Generate all zero-shot combinations (train != test)
+zero_shot_combinations = []
+for train_dataset in checkpoint_datasets:
+    for test_dataset in available_datasets:
+        if train_dataset != test_dataset:
+            zero_shot_combinations.append((train_dataset, test_dataset))
 
-    print("*" * 50)
-    print('Number of samples:', KSTEPS)
-    print("*" * 50)
+print(f"Total zero-shot combinations to evaluate: {len(zero_shot_combinations)}")
+print("Combinations:", zero_shot_combinations)
 
-    for feta in range(len(paths)):
+ROBUSTNESS = 0  # Set robustness to 0 for standard evaluation
+KSTEPS = 1  # Number of prediction samples
 
-        ade_ls = []
-        fde_ls = []
-        exp_ls = []
-        path = paths[feta]
-        exps = glob.glob(path)
-        exps.sort()
-        print('Models being tested are:', exps)
+# Store all results
+all_results = []
 
-        for exp_path in exps:
-            print('exp_path:',exp_path)
+print("*" * 50)
+print('Number of samples:', KSTEPS)
+print("*" * 50)
 
-            # try:
-
-            print("*" * 50)
-            print("Evaluating model:", exp_path)
-
-            model_path = exp_path + '/val_best.pth'
-            args_path = exp_path + '/args.pkl'
-            with open(args_path, 'rb') as f:
-                args = pickle.load(f)
-
-            stats = exp_path + '/constant_metrics.pkl'
-            with open(stats, 'rb') as f:
-                cm = pickle.load(f)
-            print("Stats:", cm)
-
-            #Data prep
-            obs_seq_len = args.obs_seq_len
-            pred_seq_len = args.pred_seq_len
-            
-            data_set = './datasets/' + test_data + '/'
-
-            dset_test = TrajectoryDataset(data_set + 'test/',
-                                          obs_len=obs_seq_len,
-                                          pred_len=pred_seq_len,
-                                          skip=1,
-                                          norm_lap_matr=True)
-
-            loader_test = DataLoader(
-                dset_test,
-                batch_size=
-                1,  #This is irrelative to the args batch size parameter
-                shuffle=False,
-                num_workers=1)
-
-            #Defining the model
-
-            # is_eth = args.dataset == 'eth'
-            # if is_eth:
-            #     noise_weight = CFG["noise_weight_eth"]
-            # else:
-            #     noise_weight = CFG["noise_weight"]
-
-            if args.dataset == 'eth':
-                stgcn_layer = 0
-            else: 
-                stgcn_layer = 1
-            model = STCRF(spatial_input=CFG["spatial_input"],
-                       spatial_output=CFG["spatial_output"],
-                       temporal_input=CFG["temporal_input"],
-                       temporal_output=CFG["temporal_output"],
-                       stgcn_layer=stgcn_layer).cuda().double()
-            ## compute the number of parameters
-            
-            # summary(model, input_size=[
-
-            model.load_state_dict(torch.load(model_path))
-
-            ################################################
-            
-            model.cuda().double()
-            model.eval()
-            ##############################
-            ade_ = 999999
-            fde_ = 999999
-            print("Testing ....")
-            ad, fd = test(KSTEPS=KSTEPS)
-            ade_ = min(ade_, ad)
-            fde_ = min(fde_, fd)
-            ade_ls.append(ade_)
-            fde_ls.append(fde_)
-            exp_ls.append(exp_path)
-            print("ADE:", ade_, " FDE:", fde_)
-        # except Exception as e:
-        #     print(e)
+# Evaluate each zero-shot combination
+for i, (train_dataset, test_dataset) in enumerate(zero_shot_combinations):
+    print(f"\n{'='*60}")
+    print(f"Evaluation {i+1}/{len(zero_shot_combinations)}")
+    print(f"Training model: {train_dataset} → Testing on: {test_dataset}")
+    print(f"{'='*60}")
+    
+    try:
+        # Set up paths for current combination
+        checkpoint_path = f'./checkpoint/stcrf_{train_dataset}'
+        
         print("*" * 50)
-        ade_ls = np.asarray(ade_ls)
-        fde_ls = np.asarray(fde_ls)
-        min_ade_indx = np.argmin(ade_ls)
-        min_fde_indx = np.argmin(fde_ls)
-        avg_ade_fde = (ade_ls + fde_ls) / 2.0
-        min_avg_ade_fde = np.argmin(avg_ade_fde)
+        print("Evaluating model:", checkpoint_path)
 
-        EASY_RESULTS.append([
-            exp_ls[min_avg_ade_fde],
-            round(ade_ls[min_avg_ade_fde], 4),
-            round(fde_ls[min_avg_ade_fde], 4)
-        ])
-    print(EASY_RESULTS)
-    ade_mean = np.mean([x[1] for x in EASY_RESULTS])
-    fde_mean = np.mean([x[2] for x in EASY_RESULTS])
-    print('test_data:', test_data)
-    print("Mean ADE:", ade_mean)
-    print("Mean FDE:", fde_mean)
+        model_path = checkpoint_path + '/val_best.pth'
+        args_path = checkpoint_path + '/args.pkl'
+        
+        # Load model arguments
+        with open(args_path, 'rb') as f:
+            args = pickle.load(f)
+
+        # Load statistics
+        stats = checkpoint_path + '/constant_metrics.pkl'
+        with open(stats, 'rb') as f:
+            cm = pickle.load(f)
+        print("Stats:", cm)
+
+        # Data preparation
+        obs_seq_len = args.obs_seq_len
+        pred_seq_len = args.pred_seq_len
+        
+        data_set = f'./datasets/{test_dataset}/'
+
+        dset_test = TrajectoryDataset(data_set + 'test/',
+                                      obs_len=obs_seq_len,
+                                      pred_len=pred_seq_len,
+                                      skip=1,
+                                      norm_lap_matr=True)
+
+        loader_test = DataLoader(
+            dset_test,
+            batch_size=1,
+            shuffle=False,
+            num_workers=1)
+
+        # Define the model
+        if args.dataset == 'eth':
+            stgcn_layer = 0
+        else: 
+            stgcn_layer = 1
+            
+        model = STCRF(spatial_input=CFG["spatial_input"],
+                   spatial_output=CFG["spatial_output"],
+                   temporal_input=CFG["temporal_input"],
+                   temporal_output=CFG["temporal_output"],
+                   stgcn_layer=stgcn_layer).cuda().double()
+
+        # Load model weights
+        model.load_state_dict(torch.load(model_path))
+        model.cuda().double()
+        model.eval()
+        
+        # Test the model
+        print("Testing ....")
+        ade_, fde_ = test(KSTEPS=KSTEPS)
+        
+        # Store results
+        result = {
+            'train_dataset': train_dataset,
+            'test_dataset': test_dataset,
+            'ade': round(ade_, 4),
+            'fde': round(fde_, 4),
+            'model_path': checkpoint_path
+        }
+        all_results.append(result)
+        
+        print(f"ADE: {ade_:.4f}, FDE: {fde_:.4f}")
+        
+    except Exception as e:
+        print(f"Error evaluating {train_dataset} → {test_dataset}: {str(e)}")
+        # Store error result
+        result = {
+            'train_dataset': train_dataset,
+            'test_dataset': test_dataset,
+            'ade': 'ERROR',
+            'fde': 'ERROR',
+            'model_path': checkpoint_path,
+            'error': str(e)
+        }
+        all_results.append(result)
+
+# Generate markdown report
+def generate_markdown_report(results):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    markdown_content = f"""# Zero-Shot Trajectory Prediction Results
+
+**Generated on:** {timestamp}  
+**Total Combinations Evaluated:** {len(results)}  
+**KSTEPS:** {KSTEPS}  
+**ROBUSTNESS:** {ROBUSTNESS}  
+
+## Summary Table
+
+| Training Dataset | Testing Dataset | ADE | FDE | Status |
+|------------------|-----------------|-----|-----|--------|
+"""
+    
+    for result in results:
+        status = "✅ Success" if result['ade'] != 'ERROR' else "❌ Failed"
+        markdown_content += f"| {result['train_dataset']} | {result['test_dataset']} | {result['ade']} | {result['fde']} | {status} |\n"
+    
+    # Add detailed results section
+    markdown_content += f"""
+## Detailed Results
+
+"""
+    
+    # Group results by training dataset
+    train_datasets = list(set([r['train_dataset'] for r in results]))
+    for train_ds in sorted(train_datasets):
+        markdown_content += f"### Model trained on {train_ds.upper()}\n\n"
+        train_results = [r for r in results if r['train_dataset'] == train_ds]
+        
+        for result in train_results:
+            if result['ade'] != 'ERROR':
+                markdown_content += f"- **{result['test_dataset'].upper()}**: ADE={result['ade']}, FDE={result['fde']}\n"
+            else:
+                markdown_content += f"- **{result['test_dataset'].upper()}**: ERROR - {result.get('error', 'Unknown error')}\n"
+        markdown_content += "\n"
+    
+    # Add statistics
+    successful_results = [r for r in results if r['ade'] != 'ERROR']
+    if successful_results:
+        ade_values = [r['ade'] for r in successful_results]
+        fde_values = [r['fde'] for r in successful_results]
+        
+        markdown_content += f"""## Statistics
+
+- **Successful Evaluations:** {len(successful_results)}/{len(results)}
+- **Mean ADE:** {np.mean(ade_values):.4f}
+- **Mean FDE:** {np.mean(fde_values):.4f}
+- **Min ADE:** {np.min(ade_values):.4f}
+- **Max ADE:** {np.max(ade_values):.4f}
+- **Min FDE:** {np.min(fde_values):.4f}
+- **Max FDE:** {np.max(fde_values):.4f}
+
+## Best Performing Combinations
+
+### Best ADE
+"""
+        best_ade = min(successful_results, key=lambda x: x['ade'])
+        markdown_content += f"- **{best_ade['train_dataset']} → {best_ade['test_dataset']}**: ADE={best_ade['ade']}, FDE={best_ade['fde']}\n\n"
+        
+        markdown_content += "### Best FDE\n"
+        best_fde = min(successful_results, key=lambda x: x['fde'])
+        markdown_content += f"- **{best_fde['train_dataset']} → {best_fde['test_dataset']}**: ADE={best_fde['ade']}, FDE={best_fde['fde']}\n\n"
+    
+    return markdown_content
+
+# Generate and save the markdown report
+markdown_report = generate_markdown_report(all_results)
+output_filename = f"zero_shot_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+
+with open(output_filename, 'w', encoding='utf-8') as f:
+    f.write(markdown_report)
+
+print(f"\n{'='*60}")
+print("EVALUATION COMPLETE!")
+print(f"Results saved to: {output_filename}")
+print(f"{'='*60}")
+
+# Print summary to console
+successful_results = [r for r in all_results if r['ade'] != 'ERROR']
+print(f"\nSummary:")
+print(f"- Total combinations: {len(all_results)}")
+print(f"- Successful: {len(successful_results)}")
+print(f"- Failed: {len(all_results) - len(successful_results)}")
+
+if successful_results:
+    ade_values = [r['ade'] for r in successful_results]
+    fde_values = [r['fde'] for r in successful_results]
+    print(f"- Mean ADE: {np.mean(ade_values):.4f}")
+    print(f"- Mean FDE: {np.mean(fde_values):.4f}")
