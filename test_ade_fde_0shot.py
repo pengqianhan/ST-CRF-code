@@ -145,7 +145,7 @@ for i, (train_dataset, test_dataset) in enumerate(zero_shot_combinations):
     
     try:
         # Set up paths for current combination
-        checkpoint_path = f'./checkpoint/stcrf_{train_dataset}'
+        checkpoint_path = f'./checkpoint_deter/stcrf_{train_dataset}'
         
         print("*" * 50)
         print("Evaluating model:", checkpoint_path)
