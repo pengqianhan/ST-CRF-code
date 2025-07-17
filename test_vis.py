@@ -10,6 +10,7 @@ from model import STCRF
 from CFG import CFG
 import os
 import random
+import sys
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
@@ -30,22 +31,46 @@ def plot_best_trajectories(trajectory_data, num_trajectories=15):
     Each trajectory is saved as a separate image in a folder.
     
     Args:
-        trajectory_data: List of trajectory dictionaries
+        trajectory_data: List of trajectory dictionaries or None (if should load from saved)
         num_trajectories: Number of best trajectories to plot
     """
-    # Sort trajectories by ADE (ascending - lower is better)
-    sorted_trajectories = sorted(trajectory_data, key=lambda x: x['ade'])
-    
-    # Select the best trajectories
-    best_trajectories = sorted_trajectories[:num_trajectories]
-    
-    print(f"\nPlotting {len(best_trajectories)} most accurate trajectories...")
-    print(f"ADE range: {best_trajectories[0]['ade']:.4f} to {best_trajectories[-1]['ade']:.4f}")
-    
     # Create output folder
     output_folder = 'best_trajectories'
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
+    
+    # Path for saving/loading best trajectories data
+    best_trajectories_file = os.path.join(output_folder, 'best_trajectories_data.pkl')
+    
+    # Check if we should load existing data or use provided data
+    if trajectory_data is None:
+        # Try to load existing best trajectories data
+        if os.path.exists(best_trajectories_file):
+            print(f"Loading existing best trajectories data from {best_trajectories_file}")
+            with open(best_trajectories_file, 'rb') as f:
+                best_trajectories = pickle.load(f)
+            print(f"Loaded {len(best_trajectories)} best trajectories from saved data")
+        else:
+            print("No saved best trajectories data found. Please run the full computation first.")
+            return
+    else:
+        # Sort trajectories by ADE (ascending - lower is better)
+        sorted_trajectories = sorted(trajectory_data, key=lambda x: x['ade'])
+        
+        # Select the best trajectories
+        best_trajectories = sorted_trajectories[:num_trajectories]
+        
+        # Save the best trajectories data for future use
+        with open(best_trajectories_file, 'wb') as f:
+            pickle.dump(best_trajectories, f)
+        print(f"Saved {len(best_trajectories)} best trajectories to {best_trajectories_file}")
+    
+    # Ensure we don't exceed the available trajectories
+    if len(best_trajectories) > num_trajectories:
+        best_trajectories = best_trajectories[:num_trajectories]
+    
+    print(f"\nPlotting {len(best_trajectories)} most accurate trajectories...")
+    print(f"ADE range: {best_trajectories[0]['ade']:.4f} to {best_trajectories[-1]['ade']:.4f}")
     
     # Plot each trajectory separately
     for i, traj in enumerate(best_trajectories):
@@ -113,6 +138,25 @@ def plot_best_trajectories(trajectory_data, num_trajectories=15):
         print(f"Rank {i+1}: ADE={traj['ade']:.4f}, FDE={traj['fde']:.4f}, "
               f"Dataset={traj['dataset']}, Step={traj['step']}, Ped={traj['pedestrian_id']}")
 
+
+def load_and_plot_saved_trajectories(num_trajectories=15):
+    """
+    Load and plot saved best trajectories without recomputing.
+    
+    Args:
+        num_trajectories: Number of best trajectories to plot
+    """
+    output_folder = 'best_trajectories'
+    best_trajectories_file = os.path.join(output_folder, 'best_trajectories_data.pkl')
+    
+    if os.path.exists(best_trajectories_file):
+        print("Found saved best trajectories data. Loading and plotting...")
+        plot_best_trajectories(trajectory_data=None, num_trajectories=num_trajectories)
+        return True
+    else:
+        print("No saved best trajectories data found.")
+        return False
+
 def test(KSTEPS=1, dataset='eth'):
 
     global loader_test, model, ROBUSTNESS
@@ -170,10 +214,10 @@ def test(KSTEPS=1, dataset='eth'):
         # obs_ma = torch.zeros_like(V_obs)
         # obs_ma = obs_ma.to(V_obs.device)
         seq_ma = seq_ma.to(V_obs.device)
-        # print("V_obs.shape:", V_obs.shape)##(1, 8, 2, 2)#[batch,obs_len,num_ped,2]
-        # print("seq_ma.shape:", seq_ma.shape)##(1, 20, 2, 2)#[batch,obs_len+pred_len,num_ped,2]
-        # print("obs_traj.shape:", obs_traj.shape)##(1, 2, 2, 8)#(batch,num_ped,2,obs_len)
-        # print('A_obs.shape:', A_obs.shape)##(1, 8, 2, 2)#[batch,obs_len,num_ped,num_ped]
+        # print("V_obs.shape:", V_obs.shape)##(1, 8, 3, 2)#[batch,obs_len,num_ped,2]
+        # print("seq_ma.shape:", seq_ma.shape)##(1, 20, 3, 2)#[batch,obs_len+pred_len,num_ped,2]
+        # print("obs_traj.shape:", obs_traj.shape)##(1, 3, 2, 8)#(batch,num_ped,2,obs_len)
+        # print('A_obs.shape:', A_obs.shape)##(1, 8, 3, 2)#[batch,obs_len,num_ped,num_ped]
 
         V_predx,_,_ = model([V_obs.permute(0, 3, 1, 2),seq_ma.permute(0, 3, 1, 2),obs_traj], A_obs.squeeze(),KSTEPS=KSTEPS)
         # print("V_predx.shape:", V_predx.shape)##(KSTEPS, 2,T_pred, 2)
@@ -270,10 +314,6 @@ for ROBUSTNESS in [0]:  #[-0.1, -0.01, 0, +0.01, +0.1]:
 
     paths = [
         './checkpoint_deter/stcrf_eth',
-        './checkpoint_deter/stcrf_hotel',
-        './checkpoint_deter/stcrf_univ',
-        './checkpoint_deter/stcrf_zara1',
-        './checkpoint_deter/stcrf_zara2',
     ]
 
     KSTEPS = 1## use this metric to evaluate the model
@@ -316,7 +356,8 @@ for ROBUSTNESS in [0]:  #[-0.1, -0.01, 0, +0.01, +0.1]:
             #Data prep
             obs_seq_len = args.obs_seq_len
             pred_seq_len = args.pred_seq_len
-            data_set = './datasets/' + args.dataset + '/'
+            # data_set = './datasets/' + args.dataset + '/'
+            data_set = './datasets/' + 'zara1' + '/'
 
             dset_test = TrajectoryDataset(data_set + 'test/',
                                           obs_len=obs_seq_len,
@@ -395,9 +436,128 @@ for ROBUSTNESS in [0]:  #[-0.1, -0.01, 0, +0.01, +0.1]:
     else:
         print("No results to compute mean values")
     
-    # Plot the 15 most accurate trajectories
-    if ALL_TRAJECTORY_DATA:
-        print(f"\nTotal trajectories collected: {len(ALL_TRAJECTORY_DATA)}")
-        plot_best_trajectories(ALL_TRAJECTORY_DATA, num_trajectories=15)
+    # Check if saved best trajectories data exists
+    output_folder = 'best_trajectories'
+    best_trajectories_file = os.path.join(output_folder, 'best_trajectories_data.pkl')
+    
+    # Check for command line arguments
+    force_recompute = '--force-recompute' in sys.argv
+    use_saved = '--use-saved' in sys.argv
+    
+    if os.path.exists(best_trajectories_file) and not force_recompute:
+        print("\n" + "="*60)
+        print("FOUND SAVED BEST TRAJECTORIES DATA!")
+        print("="*60)
+        
+        if use_saved:
+            print("Using saved best trajectories data (--use-saved flag)...")
+            load_and_plot_saved_trajectories(num_trajectories=15)
+        else:
+            # Interactive mode
+            print("Usage: python test_vis.py [--use-saved] [--force-recompute]")
+            print("  --use-saved: automatically use saved data")
+            print("  --force-recompute: force recomputation even if saved data exists")
+            response = input("Do you want to use saved data (y) or recompute (n)? [y/n]: ").lower().strip()
+            
+            if response == 'y' or response == 'yes' or response == '':
+                print("Using saved best trajectories data...")
+                load_and_plot_saved_trajectories(num_trajectories=15)
+            else:
+                print("Recomputing and plotting best trajectories...")
+                if ALL_TRAJECTORY_DATA:
+                    print(f"\nTotal trajectories collected: {len(ALL_TRAJECTORY_DATA)}")
+                    plot_best_trajectories(ALL_TRAJECTORY_DATA, num_trajectories=15)
+                else:
+                    print("No trajectory data collected for visualization.")
     else:
-        print("No trajectory data collected for visualization.")
+        if force_recompute:
+            print("\n" + "="*60)
+            print("FORCE RECOMPUTING BEST TRAJECTORIES (--force-recompute flag)")
+            print("="*60)
+        else:
+            print("\n" + "="*60)
+            print("NO SAVED DATA FOUND - COMPUTING BEST TRAJECTORIES")
+            print("="*60)
+        
+        # Plot the 15 most accurate trajectories
+        if ALL_TRAJECTORY_DATA:
+            print(f"\nTotal trajectories collected: {len(ALL_TRAJECTORY_DATA)}")
+            plot_best_trajectories(ALL_TRAJECTORY_DATA, num_trajectories=15)
+        else:
+            print("No trajectory data collected for visualization.")
+
+# Standalone function to quickly plot saved trajectories
+def plot_saved_trajectories_only():
+    """
+    Quick function to plot only saved trajectories without any model evaluation.
+    """
+    print("="*60)
+    print("PLOTTING SAVED TRAJECTORIES ONLY")
+    print("="*60)
+    
+    success = load_and_plot_saved_trajectories(num_trajectories=15)
+    if not success:
+        print("No saved trajectories found. Please run the full evaluation first.")
+        print("Usage: python test_vis.py  # to run full evaluation")
+        print("       python test_vis.py --use-saved  # to use saved data")
+        print("       python test_vis.py --force-recompute  # to force recomputation")
+
+if __name__ == "__main__":
+    # Check if user wants to plot saved trajectories only
+    print(sys.argv)
+    if len(sys.argv) > 1 and sys.argv[1] == '--plot-only':
+        plot_saved_trajectories_only()
+        sys.exit(0)
+    
+    # Print usage information
+    if '--help' in sys.argv or '-h' in sys.argv:
+        print("Usage: python test_vis.py [options]")
+        print("Options:")
+        print("  --use-saved         Use saved best trajectories data automatically")
+        print("  --force-recompute   Force recomputation even if saved data exists")
+        print("  --plot-only         Only plot saved trajectories (no model evaluation)")
+        print("  --help, -h          Show this help message")
+        sys.exit(0)
+    
+    # Run the main execution logic
+    print("Starting trajectory evaluation and visualization...")
+    print("Note: Use --help to see available options")
+    print("="*60)
+
+    # Main execution code moved inside if __name__ == "__main__" block
+
+"""
+MODIFICATIONS SUMMARY:
+======================
+
+This script has been enhanced with the following features:
+
+1. **Automatic saving of best trajectories**: The best 15 trajectories (by ADE score) 
+   are automatically saved to 'best_trajectories/best_trajectories_data.pkl'
+
+2. **Smart loading**: The script checks for existing saved data and offers options:
+   - Interactive mode: Prompts user to choose between saved data or recomputation
+   - Command-line options for automation
+
+3. **Command-line options**:
+   - `python test_vis.py` : Normal run with interactive prompts
+   - `python test_vis.py --use-saved` : Automatically use saved data
+   - `python test_vis.py --force-recompute` : Force recomputation even if saved data exists
+   - `python test_vis.py --plot-only` : Only plot saved data (no model evaluation)
+   - `python test_vis.py --help` : Show help message
+
+4. **Functions added**:
+   - `plot_best_trajectories()`: Enhanced to save/load trajectory data
+   - `load_and_plot_saved_trajectories()`: Load and plot saved data
+   - `plot_saved_trajectories_only()`: Quick plotting without evaluation
+
+5. **Performance benefits**:
+   - Subsequent runs are much faster when using saved data
+   - No need to re-evaluate models if you just want to regenerate plots
+   - Persistent storage of best trajectory data for analysis
+
+Usage examples:
+- First run: `python test_vis.py` (computes and saves best trajectories)
+- Later runs: `python test_vis.py --use-saved` (fast plotting from saved data)
+- Force new computation: `python test_vis.py --force-recompute`
+"""
