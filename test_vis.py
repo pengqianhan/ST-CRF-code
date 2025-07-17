@@ -157,6 +157,172 @@ def load_and_plot_saved_trajectories(num_trajectories=15):
         print("No saved best trajectories data found.")
         return False
 
+def plot_best_batches(batch_data, num_batches=10):
+    """
+    Plot the best batches based on average ADE scores.
+    Each batch is saved as a separate image showing all pedestrians in that batch.
+    
+    Args:
+        batch_data: List of batch dictionaries or None (if should load from saved)
+        num_batches: Number of best batches to plot
+    """
+    # Create output folder
+    output_folder = 'best_batches'
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    
+    # Path for saving/loading best batches data
+    best_batches_file = os.path.join(output_folder, 'best_batches_data.pkl')
+    
+    # Check if we should load existing data or use provided data
+    if batch_data is None:
+        # Try to load existing best batches data
+        if os.path.exists(best_batches_file):
+            print(f"Loading existing best batches data from {best_batches_file}")
+            with open(best_batches_file, 'rb') as f:
+                best_batches = pickle.load(f)
+            print(f"Loaded {len(best_batches)} best batches from saved data")
+        else:
+            print("No saved best batches data found. Please run the full computation first.")
+            return
+    else:
+        # Sort batches by average ADE (ascending - lower is better)
+        sorted_batches = sorted(batch_data, key=lambda x: x['avg_ade'])
+        
+        # Select the best batches
+        best_batches = sorted_batches[:num_batches]
+        
+        # Save the best batches data for future use
+        with open(best_batches_file, 'wb') as f:
+            pickle.dump(best_batches, f)
+        print(f"Saved {len(best_batches)} best batches to {best_batches_file}")
+    
+    # Ensure we don't exceed the available batches
+    if len(best_batches) > num_batches:
+        best_batches = best_batches[:num_batches]
+    
+    print(f"\nPlotting {len(best_batches)} most accurate batches...")
+    print(f"Average ADE range: {best_batches[0]['avg_ade']:.4f} to {best_batches[-1]['avg_ade']:.4f}")
+    
+    # Define colors for different pedestrians
+    colors = plt.cm.Set3(np.linspace(0, 1, 12))  # Use Set3 colormap for distinct colors
+    
+    # Plot each batch separately
+    for i, batch in enumerate(best_batches):
+        # Create figure for this batch
+        fig, ax = plt.subplots(figsize=(12, 10))
+        
+        # Extract batch data
+        batch_observed = batch['observed']  # [num_ped, obs_len, 2]
+        batch_predicted = batch['predicted']  # [num_ped, pred_len, 2]
+        batch_ground_truth = batch['ground_truth']  # [num_ped, pred_len, 2]
+        batch_ades = batch['pedestrian_ades']  # [num_ped]
+        batch_fdes = batch['pedestrian_fdes']  # [num_ped]
+        num_peds = len(batch_ades)
+        
+        # Plot each pedestrian in the batch
+        for ped_idx in range(num_peds):
+            color = colors[ped_idx % len(colors)]
+            
+            observed = batch_observed[ped_idx]  # [obs_len, 2]
+            predicted = batch_predicted[ped_idx]  # [pred_len, 2]
+            ground_truth = batch_ground_truth[ped_idx]  # [pred_len, 2]
+            ped_ade = batch_ades[ped_idx]
+            ped_fde = batch_fdes[ped_idx]
+            
+            # Plot historical trajectory
+            ax.plot(observed[:, 0], observed[:, 1], 
+                    color=color, linewidth=2, alpha=0.8,
+                    label=f'Ped {ped_idx+1} Hist (ADE: {ped_ade:.3f})', 
+                    marker='o', markersize=3)
+            
+            # Plot predicted trajectory
+            ax.plot(predicted[:, 0], predicted[:, 1], 
+                    color=color, linewidth=2, alpha=0.8, linestyle='--',
+                    marker='s', markersize=3)
+            
+            # Plot ground truth
+            ax.plot(ground_truth[:, 0], ground_truth[:, 1], 
+                    color=color, linewidth=1.5, alpha=0.6, linestyle=':',
+                    marker='^', markersize=3)
+            
+            # Mark start and end points
+            ax.scatter(observed[0, 0], observed[0, 1], color=color, s=60, marker='o', 
+                      alpha=1.0, edgecolors='black', linewidth=1)
+            ax.scatter(predicted[-1, 0], predicted[-1, 1], color=color, s=60, marker='s', 
+                      alpha=1.0, edgecolors='black', linewidth=1)
+            ax.scatter(ground_truth[-1, 0], ground_truth[-1, 1], color=color, s=60, marker='^', 
+                      alpha=1.0, edgecolors='black', linewidth=1)
+        
+        # Add legend explanation
+        ax.plot([], [], color='gray', linewidth=2, alpha=0.8, label='Historical')
+        ax.plot([], [], color='gray', linewidth=2, alpha=0.8, linestyle='--', label='Predicted')
+        ax.plot([], [], color='gray', linewidth=1.5, alpha=0.6, linestyle=':', label='Ground Truth')
+        
+        # Set labels and title
+        ax.set_xlabel('X coordinate', fontsize=12)
+        ax.set_ylabel('Y coordinate', fontsize=12)
+        ax.set_title(f'Batch Rank {i+1} - Dataset: {batch["dataset"]} - Step: {batch["step"]}\n'
+                    f'Average ADE: {batch["avg_ade"]:.4f}, Average FDE: {batch["avg_fde"]:.4f}\n'
+                    f'Number of Pedestrians: {num_peds}', fontsize=14)
+        ax.grid(True, alpha=0.3)
+        
+        # Create a compact legend
+        handles, labels = ax.get_legend_handles_labels()
+        # Show only the first few pedestrian labels to avoid clutter
+        max_ped_labels = min(6, num_peds)
+        ped_handles = handles[:max_ped_labels]
+        ped_labels = labels[:max_ped_labels]
+        type_handles = handles[-3:]  # Historical, Predicted, Ground Truth
+        type_labels = labels[-3:]
+        
+        if num_peds > max_ped_labels:
+            ped_labels[-1] = f'... and {num_peds - max_ped_labels + 1} more pedestrians'
+        
+        all_handles = ped_handles + type_handles
+        all_labels = ped_labels + type_labels
+        ax.legend(all_handles, all_labels, fontsize=9, loc='upper right', 
+                 bbox_to_anchor=(1.0, 1.0))
+        
+        # Make axes equal for better visualization
+        ax.set_aspect('equal', adjustable='box')
+        
+        plt.tight_layout()
+        
+        # Save each batch as a separate image
+        filename = f'batch_rank_{i+1:02d}_dataset_{batch["dataset"]}_step_{batch["step"]}_avg_ade_{batch["avg_ade"]:.4f}.png'
+        filepath = os.path.join(output_folder, filename)
+        plt.savefig(filepath, dpi=300, bbox_inches='tight')
+        print(f"Saved: {filepath}")
+        plt.close()  # Close the figure to free memory
+    
+    print(f"\nAll {len(best_batches)} batch plots saved in folder: {output_folder}")
+    
+    # Print summary statistics
+    print("\nSummary of best batches:")
+    for i, batch in enumerate(best_batches[:5]):  # Show top 5
+        print(f"Rank {i+1}: Avg ADE={batch['avg_ade']:.4f}, Avg FDE={batch['avg_fde']:.4f}, "
+              f"Dataset={batch['dataset']}, Step={batch['step']}, Num Peds={len(batch['pedestrian_ades'])}")
+
+
+def load_and_plot_saved_batches(num_batches=10):
+    """
+    Load and plot saved best batches without recomputing.
+    
+    Args:
+        num_batches: Number of best batches to plot
+    """
+    output_folder = 'best_batches'
+    best_batches_file = os.path.join(output_folder, 'best_batches_data.pkl')
+    
+    if os.path.exists(best_batches_file):
+        print("Found saved best batches data. Loading and plotting...")
+        plot_best_batches(batch_data=None, num_batches=num_batches)
+        return True
+    else:
+        print("No saved best batches data found.")
+        return False
+
 def test(KSTEPS=1, dataset='eth'):
 
     global loader_test, model, ROBUSTNESS
@@ -164,7 +330,7 @@ def test(KSTEPS=1, dataset='eth'):
     model.eval()
     ade_bigls = []
     fde_bigls = []
-    trajectory_data = []  # Store trajectory data with ADE for plotting
+    batch_data = []  # Store batch data with average ADE for plotting
     step = 0
     for batch in loader_test:
         step += 1
@@ -268,6 +434,13 @@ def test(KSTEPS=1, dataset='eth'):
             V_pred_rel_to_abs_best += ROBUSTNESS
             best_predictions[n] = V_pred_rel_to_abs_best
         
+        # Collect batch-level data
+        batch_ades = []
+        batch_fdes = []
+        batch_observed = []
+        batch_predicted = []
+        batch_ground_truth = []
+        
         for n in range(num_of_objs):
             # Only process pedestrians that meet the movement criteria
             if not valid_peds[0, n].item() or len(ade_ls[n]) == 0 or n not in best_predictions:
@@ -278,21 +451,36 @@ def test(KSTEPS=1, dataset='eth'):
             ade_bigls.append(min_ade)
             fde_bigls.append(min_fde)
             
-            # Store trajectory data for visualization
-            traj_data = {
-                'ade': min_ade,
-                'fde': min_fde,
-                'observed': V_x_rel_to_abs[:, n, :],  # Historical trajectory
-                'ground_truth': V_y_rel_to_abs[:, n, :],  # Ground truth future
-                'predicted': best_predictions[n][:, n, :],  # Best prediction
+            # Collect data for this pedestrian
+            batch_ades.append(min_ade)
+            batch_fdes.append(min_fde)
+            batch_observed.append(V_x_rel_to_abs[:, n, :])  # [obs_len, 2]
+            batch_ground_truth.append(V_y_rel_to_abs[:, n, :])  # [pred_len, 2]
+            batch_predicted.append(best_predictions[n][:, n, :])  # [pred_len, 2]
+        
+        # Only store batch data if there are valid pedestrians
+        if len(batch_ades) > 0:
+            # Calculate average ADE and FDE for this batch
+            avg_ade = np.mean(batch_ades)
+            avg_fde = np.mean(batch_fdes)
+            
+            # Store batch data for visualization
+            batch_info = {
+                'avg_ade': avg_ade,
+                'avg_fde': avg_fde,
+                'pedestrian_ades': batch_ades,
+                'pedestrian_fdes': batch_fdes,
+                'observed': batch_observed,  # List of [obs_len, 2] arrays
+                'ground_truth': batch_ground_truth,  # List of [pred_len, 2] arrays
+                'predicted': batch_predicted,  # List of [pred_len, 2] arrays
                 'step': step,
-                'pedestrian_id': n
+                'num_pedestrians': len(batch_ades)
             }
-            trajectory_data.append(traj_data)
+            batch_data.append(batch_info)
 
     ade_ = sum(ade_bigls) / len(ade_bigls)
     fde_ = sum(fde_bigls) / len(fde_bigls)
-    return ade_, fde_, trajectory_data
+    return ade_, fde_, batch_data
 
 
 for ROBUSTNESS in [0]:  #[-0.1, -0.01, 0, +0.01, +0.1]:
@@ -319,7 +507,7 @@ for ROBUSTNESS in [0]:  #[-0.1, -0.01, 0, +0.01, +0.1]:
     KSTEPS = 1## use this metric to evaluate the model
 
     EASY_RESULTS = []
-    ALL_TRAJECTORY_DATA = []  # Collect all trajectory data for visualization
+    ALL_BATCH_DATA = []  # Collect all batch data for visualization
 
     print("*" * 50)
     print('Number of samples:', KSTEPS)
@@ -395,18 +583,18 @@ for ROBUSTNESS in [0]:  #[-0.1, -0.01, 0, +0.01, +0.1]:
             ade_ = 999999
             fde_ = 999999
             print("Testing ....")
-            ad, fd, traj_data = test(KSTEPS=KSTEPS, dataset=args.dataset)
+            ad, fd, batch_data_list = test(KSTEPS=KSTEPS, dataset=args.dataset)
             ade_ = min(ade_, ad)
             fde_ = min(fde_, fd)
             ade_ls.append(ade_)
             fde_ls.append(fde_)
             exp_ls.append(exp_path)
             
-            # Add dataset info to trajectory data and collect
-            for traj in traj_data:
-                traj['dataset'] = args.dataset
-                traj['model_path'] = exp_path
-            ALL_TRAJECTORY_DATA.extend(traj_data)
+            # Add dataset info to batch data and collect
+            for batch_info in batch_data_list:
+                batch_info['dataset'] = args.dataset
+                batch_info['model_path'] = exp_path
+            ALL_BATCH_DATA.extend(batch_data_list)
             
             print("ADE:", ade_, " FDE:", fde_)
         # except Exception as e:
@@ -436,22 +624,22 @@ for ROBUSTNESS in [0]:  #[-0.1, -0.01, 0, +0.01, +0.1]:
     else:
         print("No results to compute mean values")
     
-    # Check if saved best trajectories data exists
-    output_folder = 'best_trajectories'
-    best_trajectories_file = os.path.join(output_folder, 'best_trajectories_data.pkl')
+    # Check if saved best batches data exists
+    output_folder = 'best_batches'
+    best_batches_file = os.path.join(output_folder, 'best_batches_data.pkl')
     
     # Check for command line arguments
     force_recompute = '--force-recompute' in sys.argv
     use_saved = '--use-saved' in sys.argv
     
-    if os.path.exists(best_trajectories_file) and not force_recompute:
+    if os.path.exists(best_batches_file) and not force_recompute:
         print("\n" + "="*60)
-        print("FOUND SAVED BEST TRAJECTORIES DATA!")
+        print("FOUND SAVED BEST BATCHES DATA!")
         print("="*60)
         
         if use_saved:
-            print("Using saved best trajectories data (--use-saved flag)...")
-            load_and_plot_saved_trajectories(num_trajectories=15)
+            print("Using saved best batches data (--use-saved flag)...")
+            load_and_plot_saved_batches(num_batches=10)
         else:
             # Interactive mode
             print("Usage: python test_vis.py [--use-saved] [--force-recompute]")
@@ -460,67 +648,67 @@ for ROBUSTNESS in [0]:  #[-0.1, -0.01, 0, +0.01, +0.1]:
             response = input("Do you want to use saved data (y) or recompute (n)? [y/n]: ").lower().strip()
             
             if response == 'y' or response == 'yes' or response == '':
-                print("Using saved best trajectories data...")
-                load_and_plot_saved_trajectories(num_trajectories=15)
+                print("Using saved best batches data...")
+                load_and_plot_saved_batches(num_batches=10)
             else:
-                print("Recomputing and plotting best trajectories...")
-                if ALL_TRAJECTORY_DATA:
-                    print(f"\nTotal trajectories collected: {len(ALL_TRAJECTORY_DATA)}")
-                    plot_best_trajectories(ALL_TRAJECTORY_DATA, num_trajectories=15)
+                print("Recomputing and plotting best batches...")
+                if ALL_BATCH_DATA:
+                    print(f"\nTotal batches collected: {len(ALL_BATCH_DATA)}")
+                    plot_best_batches(ALL_BATCH_DATA, num_batches=10)
                 else:
-                    print("No trajectory data collected for visualization.")
+                    print("No batch data collected for visualization.")
     else:
         if force_recompute:
             print("\n" + "="*60)
-            print("FORCE RECOMPUTING BEST TRAJECTORIES (--force-recompute flag)")
+            print("FORCE RECOMPUTING BEST BATCHES (--force-recompute flag)")
             print("="*60)
         else:
             print("\n" + "="*60)
-            print("NO SAVED DATA FOUND - COMPUTING BEST TRAJECTORIES")
+            print("NO SAVED DATA FOUND - COMPUTING BEST BATCHES")
             print("="*60)
         
-        # Plot the 15 most accurate trajectories
-        if ALL_TRAJECTORY_DATA:
-            print(f"\nTotal trajectories collected: {len(ALL_TRAJECTORY_DATA)}")
-            plot_best_trajectories(ALL_TRAJECTORY_DATA, num_trajectories=15)
+        # Plot the 10 most accurate batches
+        if ALL_BATCH_DATA:
+            print(f"\nTotal batches collected: {len(ALL_BATCH_DATA)}")
+            plot_best_batches(ALL_BATCH_DATA, num_batches=10)
         else:
-            print("No trajectory data collected for visualization.")
+            print("No batch data collected for visualization.")
 
-# Standalone function to quickly plot saved trajectories
-def plot_saved_trajectories_only():
+# Standalone function to quickly plot saved batches
+def plot_saved_batches_only():
     """
-    Quick function to plot only saved trajectories without any model evaluation.
+    Quick function to plot only saved batches without any model evaluation.
     """
     print("="*60)
-    print("PLOTTING SAVED TRAJECTORIES ONLY")
+    print("PLOTTING SAVED BATCHES ONLY")
     print("="*60)
     
-    success = load_and_plot_saved_trajectories(num_trajectories=15)
+    success = load_and_plot_saved_batches(num_batches=10)
     if not success:
-        print("No saved trajectories found. Please run the full evaluation first.")
+        print("No saved batches found. Please run the full evaluation first.")
         print("Usage: python test_vis.py  # to run full evaluation")
         print("       python test_vis.py --use-saved  # to use saved data")
         print("       python test_vis.py --force-recompute  # to force recomputation")
 
 if __name__ == "__main__":
-    # Check if user wants to plot saved trajectories only
+    # Check if user wants to plot saved batches only
     print(sys.argv)
     if len(sys.argv) > 1 and sys.argv[1] == '--plot-only':
-        plot_saved_trajectories_only()
+        plot_saved_batches_only()
         sys.exit(0)
     
     # Print usage information
     if '--help' in sys.argv or '-h' in sys.argv:
         print("Usage: python test_vis.py [options]")
         print("Options:")
-        print("  --use-saved         Use saved best trajectories data automatically")
+        print("  --use-saved         Use saved best batches data automatically")
         print("  --force-recompute   Force recomputation even if saved data exists")
-        print("  --plot-only         Only plot saved trajectories (no model evaluation)")
+        print("  --plot-only         Only plot saved batches (no model evaluation)")
         print("  --help, -h          Show this help message")
         sys.exit(0)
     
     # Run the main execution logic
-    print("Starting trajectory evaluation and visualization...")
+    print("Starting batch evaluation and visualization...")
     print("Note: Use --help to see available options")
     print("="*60)
 
@@ -532,32 +720,43 @@ MODIFICATIONS SUMMARY:
 
 This script has been enhanced with the following features:
 
-1. **Automatic saving of best trajectories**: The best 15 trajectories (by ADE score) 
-   are automatically saved to 'best_trajectories/best_trajectories_data.pkl'
+1. **Batch-level analysis**: Computes average ADE for all pedestrians within each batch 
+   and selects the 10 best batches (lowest average ADE). Data is saved to 
+   'best_batches/best_batches_data.pkl'
 
-2. **Smart loading**: The script checks for existing saved data and offers options:
+2. **Multi-pedestrian visualization**: Each batch is visualized as a single plot showing 
+   all pedestrians in that batch with different colors. Different batches are shown 
+   in separate plots.
+
+3. **Smart loading**: The script checks for existing saved data and offers options:
    - Interactive mode: Prompts user to choose between saved data or recomputation
    - Command-line options for automation
 
-3. **Command-line options**:
+4. **Command-line options**:
    - `python test_vis.py` : Normal run with interactive prompts
    - `python test_vis.py --use-saved` : Automatically use saved data
    - `python test_vis.py --force-recompute` : Force recomputation even if saved data exists
    - `python test_vis.py --plot-only` : Only plot saved data (no model evaluation)
    - `python test_vis.py --help` : Show help message
 
-4. **Functions added**:
-   - `plot_best_trajectories()`: Enhanced to save/load trajectory data
-   - `load_and_plot_saved_trajectories()`: Load and plot saved data
-   - `plot_saved_trajectories_only()`: Quick plotting without evaluation
+5. **Functions added**:
+   - `plot_best_batches()`: Plot best batches with all pedestrians per batch
+   - `load_and_plot_saved_batches()`: Load and plot saved batch data
+   - `plot_saved_batches_only()`: Quick plotting without evaluation
 
-5. **Performance benefits**:
+6. **Data structure**: Each batch contains:
+   - Average ADE/FDE for the batch
+   - Individual ADE/FDE for each pedestrian
+   - Observed, predicted, and ground truth trajectories for all pedestrians
+   - Batch metadata (step, dataset, number of pedestrians)
+
+7. **Performance benefits**:
    - Subsequent runs are much faster when using saved data
    - No need to re-evaluate models if you just want to regenerate plots
-   - Persistent storage of best trajectory data for analysis
+   - Persistent storage of best batch data for analysis
 
 Usage examples:
-- First run: `python test_vis.py` (computes and saves best trajectories)
+- First run: `python test_vis.py` (computes and saves best batches)
 - Later runs: `python test_vis.py --use-saved` (fast plotting from saved data)
 - Force new computation: `python test_vis.py --force-recompute`
 """
