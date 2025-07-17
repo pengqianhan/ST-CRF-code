@@ -127,4 +127,18 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+*.
+
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.ico
+*.webp
+
+# check points
 *.pkl
+pkls/
