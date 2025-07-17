@@ -2,6 +2,7 @@ import os
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
 
 # Update to load batch data instead of trajectory data
 output_folder = 'best_batches'
@@ -41,7 +42,12 @@ def print_batch_info():
             print(batch.keys())
             print(len(batch['observed']))
             print(batch['observed'][0].shape)
-            
+            # 把batch['observed']中的所有元素拼接起来，得到一个形状为(num_ped，obs_len,2)的tensor,num_ped是len(batch['observed'])
+            # 把batch['observed']中的所有元素拼接起来，得到一个形状为(num_ped，obs_len,2)的tensor
+            observed_tensor = torch.stack([torch.tensor(obs) for obs in batch['observed']], dim=0)
+            print(f"Observed tensor shape==========: {observed_tensor.shape}")  # Should be (num_ped, obs_len, 2)
+
+
             # Basic batch info
             print(f"Dataset: {batch.get('dataset', 'Unknown')}")
             print(f"Step: {batch.get('step', 'Unknown')}")
