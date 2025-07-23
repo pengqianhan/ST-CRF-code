@@ -323,6 +323,126 @@ def load_and_plot_saved_batches(num_batches=10):
         print("No saved best batches data found.")
         return False
 
+def export_best_batch_data(batch_data=None):
+    """
+    Export the best batch's observed+ground_truth to best.txt and predicted to pred.txt.
+    
+    Args:
+        batch_data: List of batch dictionaries or None (if should load from saved)
+    """
+    # Create output folder
+    output_folder = 'best_batches'
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    
+    # Path for saving/loading best batches data
+    best_batches_file = os.path.join(output_folder, 'best_batches_data.pkl')
+    
+    # Check if we should load existing data or use provided data
+    if batch_data is None:
+        # Try to load existing best batches data
+        if os.path.exists(best_batches_file):
+            print(f"Loading existing best batches data from {best_batches_file}")
+            with open(best_batches_file, 'rb') as f:
+                best_batches = pickle.load(f)
+            print(f"Loaded {len(best_batches)} best batches from saved data")
+        else:
+            print("No saved best batches data found. Please run the full computation first.")
+            return False
+    else:
+        # Sort batches by average ADE (ascending - lower is better)
+        sorted_batches = sorted(batch_data, key=lambda x: x['avg_ade'])
+        best_batches = sorted_batches
+    
+    if not best_batches:
+        print("No batch data available for export.")
+        return False
+    
+    # Get the best batch (rank 1 - lowest ADE)
+    best_batch = best_batches[0]
+    
+    print(f"\nExporting best batch data...")
+    print(f"Best batch info: Dataset={best_batch['dataset']}, Step={best_batch['step']}")
+    print(f"Average ADE: {best_batch['avg_ade']:.6f}, Average FDE: {best_batch['avg_fde']:.6f}")
+    print(f"Number of pedestrians: {best_batch['num_pedestrians']}")
+    
+    # Extract trajectory data
+    observed_list = best_batch['observed']  # List of [obs_len, 2] arrays
+    ground_truth_list = best_batch['ground_truth']  # List of [pred_len, 2] arrays  
+    predicted_list = best_batch['predicted']  # List of [pred_len, 2] arrays
+    
+    # Convert to numpy arrays for easier processing
+    observed = np.stack(observed_list)  # [num_ped, obs_len, 2]
+    ground_truth = np.stack(ground_truth_list)  # [num_ped, pred_len, 2]
+    predicted = np.stack(predicted_list)  # [num_ped, pred_len, 2]
+    
+    num_peds, obs_len, _ = observed.shape
+    pred_len = ground_truth.shape[1]
+    total_len = obs_len + pred_len
+    
+    print(f"Data shapes: observed={observed.shape}, ground_truth={ground_truth.shape}, predicted={predicted.shape}")
+    
+    # Combine observed + ground_truth for the complete sequence (20 frames)
+    complete_sequence = np.concatenate([observed, ground_truth], axis=1)  # [num_ped, total_len, 2]
+    
+    # Save paths
+    best_txt_path = os.path.join(output_folder, 'best.txt')
+    pred_txt_path = os.path.join(output_folder, 'pred.txt')
+    
+    # Write best.txt (observed + ground_truth sequence)
+    print(f"\nSaving complete sequence (observed + ground_truth) to {best_txt_path}")
+    with open(best_txt_path, 'w') as f:
+        f.write("# Complete trajectory sequence (observed + ground_truth)\n")
+        f.write("# Format: frame_idx\tped_idx\tx\ty\n")
+        for ped_idx in range(num_peds):
+            for frame_idx in range(total_len):
+                x, y = complete_sequence[ped_idx, frame_idx]
+                f.write(f"{frame_idx:02d}\t{ped_idx:02d}\t{x:.6f}\t{y:.6f}\n")
+    
+    # Write pred.txt (predicted sequence)
+    print(f"Saving predicted sequence to {pred_txt_path}")
+    with open(pred_txt_path, 'w') as f:
+        f.write("# Predicted trajectory sequence\n")
+        f.write("# Format: frame_idx\tped_idx\tx\ty\n")
+        for ped_idx in range(num_peds):
+            for frame_idx in range(pred_len):
+                x, y = predicted[ped_idx, frame_idx]
+                # Frame index starts from obs_len (8) to align with ground truth frames
+                actual_frame_idx = frame_idx + obs_len
+                f.write(f"{actual_frame_idx:02d}\t{ped_idx:02d}\t{x:.6f}\t{y:.6f}\n")
+    
+    print(f"\nExport completed successfully!")
+    print(f"Files saved:")
+    print(f"  - {best_txt_path}: Complete sequence ({total_len} frames per pedestrian)")
+    print(f"  - {pred_txt_path}: Predicted sequence ({pred_len} frames per pedestrian)")
+    print(f"  - Coordinate format: frame_idx, ped_idx, x, y")
+    print(f"  - Frame indices: best.txt (0-{total_len-1}), pred.txt ({obs_len}-{obs_len+pred_len-1})")
+    
+    # Print summary statistics
+    print(f"\nSummary statistics:")
+    print(f"  - Number of pedestrians: {num_peds}")
+    print(f"  - Observation length: {obs_len} frames")
+    print(f"  - Prediction length: {pred_len} frames")
+    print(f"  - Total sequence length: {total_len} frames")
+    print(f"  - Best batch ADE: {best_batch['avg_ade']:.6f}")
+    print(f"  - Best batch FDE: {best_batch['avg_fde']:.6f}")
+    
+    return True
+
+def load_and_export_saved_batch_data():
+    """
+    Load and export saved best batch data without recomputing or plotting.
+    """
+    output_folder = 'best_batches'
+    best_batches_file = os.path.join(output_folder, 'best_batches_data.pkl')
+    
+    if os.path.exists(best_batches_file):
+        print("Found saved best batches data. Loading and exporting...")
+        return export_best_batch_data(batch_data=None)
+    else:
+        print("No saved best batches data found.")
+        return False
+
 def test(KSTEPS=1, dataset='eth'):
 
     global loader_test, model, ROBUSTNESS
@@ -631,6 +751,7 @@ for ROBUSTNESS in [0]:  #[-0.1, -0.01, 0, +0.01, +0.1]:
     # Check for command line arguments
     force_recompute = '--force-recompute' in sys.argv
     use_saved = '--use-saved' in sys.argv
+    export_data = '--export-data' in sys.argv
     
     if os.path.exists(best_batches_file) and not force_recompute:
         print("\n" + "="*60)
@@ -640,21 +761,35 @@ for ROBUSTNESS in [0]:  #[-0.1, -0.01, 0, +0.01, +0.1]:
         if use_saved:
             print("Using saved best batches data (--use-saved flag)...")
             load_and_plot_saved_batches(num_batches=10)
+            if export_data:
+                print("\nExporting best batch data (--export-data flag)...")
+                export_best_batch_data(batch_data=None)
         else:
             # Interactive mode
-            print("Usage: python test_vis.py [--use-saved] [--force-recompute]")
+            print("Usage: python test_vis.py [--use-saved] [--force-recompute] [--export-data]")
             print("  --use-saved: automatically use saved data")
             print("  --force-recompute: force recomputation even if saved data exists")
+            print("  --export-data: export best batch data to txt files")
             response = input("Do you want to use saved data (y) or recompute (n)? [y/n]: ").lower().strip()
             
             if response == 'y' or response == 'yes' or response == '':
                 print("Using saved best batches data...")
                 load_and_plot_saved_batches(num_batches=10)
+                
+                # Ask if user wants to export data
+                export_response = input("Do you want to export best batch data to txt files (y/n)? [y/n]: ").lower().strip()
+                if export_response == 'y' or export_response == 'yes':
+                    print("Exporting best batch data...")
+                    export_best_batch_data(batch_data=None)
             else:
                 print("Recomputing and plotting best batches...")
                 if ALL_BATCH_DATA:
                     print(f"\nTotal batches collected: {len(ALL_BATCH_DATA)}")
                     plot_best_batches(ALL_BATCH_DATA, num_batches=10)
+                    
+                    # Export data from newly computed results
+                    print("Exporting best batch data from computed results...")
+                    export_best_batch_data(ALL_BATCH_DATA)
                 else:
                     print("No batch data collected for visualization.")
     else:
@@ -671,6 +806,10 @@ for ROBUSTNESS in [0]:  #[-0.1, -0.01, 0, +0.01, +0.1]:
         if ALL_BATCH_DATA:
             print(f"\nTotal batches collected: {len(ALL_BATCH_DATA)}")
             plot_best_batches(ALL_BATCH_DATA, num_batches=10)
+            
+            # Export data from newly computed results
+            print("Exporting best batch data from computed results...")
+            export_best_batch_data(ALL_BATCH_DATA)
         else:
             print("No batch data collected for visualization.")
 
@@ -689,6 +828,22 @@ def plot_saved_batches_only():
         print("Usage: python test_vis.py  # to run full evaluation")
         print("       python test_vis.py --use-saved  # to use saved data")
         print("       python test_vis.py --force-recompute  # to force recomputation")
+        print("       python test_vis.py --export-data  # to export best batch data")
+
+def export_saved_batches_only():
+    """
+    Quick function to export only saved batch data without any model evaluation or plotting.
+    """
+    print("="*60)
+    print("EXPORTING SAVED BATCH DATA ONLY")
+    print("="*60)
+    
+    success = load_and_export_saved_batch_data()
+    if not success:
+        print("No saved batch data found. Please run the full evaluation first.")
+        print("Usage: python test_vis.py  # to run full evaluation")
+        print("       python test_vis.py --use-saved  # to use saved data")
+        print("       python test_vis.py --export-only  # to export data only")
 
 if __name__ == "__main__":
     # Check if user wants to plot saved batches only
@@ -697,14 +852,26 @@ if __name__ == "__main__":
         plot_saved_batches_only()
         sys.exit(0)
     
+    # Check if user wants to export saved batch data only
+    if len(sys.argv) > 1 and sys.argv[1] == '--export-only':
+        export_saved_batches_only()
+        sys.exit(0)
+    
     # Print usage information
     if '--help' in sys.argv or '-h' in sys.argv:
         print("Usage: python test_vis.py [options]")
         print("Options:")
         print("  --use-saved         Use saved best batches data automatically")
         print("  --force-recompute   Force recomputation even if saved data exists")
+        print("  --export-data       Export best batch data to txt files")
         print("  --plot-only         Only plot saved batches (no model evaluation)")
+        print("  --export-only       Only export saved batch data (no evaluation/plotting)")
         print("  --help, -h          Show this help message")
+        print("")
+        print("File outputs:")
+        print("  best_batches/best.txt      Complete trajectory (observed + ground truth)")
+        print("  best_batches/pred.txt      Predicted trajectory")
+        print("  best_batches/*.png         Batch visualization plots")
         sys.exit(0)
     
     # Run the main execution logic
@@ -736,13 +903,18 @@ This script has been enhanced with the following features:
    - `python test_vis.py` : Normal run with interactive prompts
    - `python test_vis.py --use-saved` : Automatically use saved data
    - `python test_vis.py --force-recompute` : Force recomputation even if saved data exists
+   - `python test_vis.py --export-data` : Export best batch data to txt files
    - `python test_vis.py --plot-only` : Only plot saved data (no model evaluation)
+   - `python test_vis.py --export-only` : Only export saved data (no evaluation/plotting)
    - `python test_vis.py --help` : Show help message
 
 5. **Functions added**:
    - `plot_best_batches()`: Plot best batches with all pedestrians per batch
    - `load_and_plot_saved_batches()`: Load and plot saved batch data
    - `plot_saved_batches_only()`: Quick plotting without evaluation
+   - `export_best_batch_data()`: Export best batch data to txt files
+   - `load_and_export_saved_batch_data()`: Load and export saved batch data
+   - `export_saved_batches_only()`: Quick export without evaluation/plotting
 
 6. **Data structure**: Each batch contains:
    - Average ADE/FDE for the batch
@@ -754,9 +926,18 @@ This script has been enhanced with the following features:
    - Subsequent runs are much faster when using saved data
    - No need to re-evaluate models if you just want to regenerate plots
    - Persistent storage of best batch data for analysis
+   - Export trajectory data for use with other models
+
+8. **Data export features**:
+   - Exports best batch's observed+ground_truth to `best_batches/best.txt`
+   - Exports corresponding predictions to `best_batches/pred.txt`
+   - Format: frame_idx, ped_idx, x, y (tab-separated)
+   - Ready for use with other trajectory prediction models
 
 Usage examples:
-- First run: `python test_vis.py` (computes and saves best batches)
-- Later runs: `python test_vis.py --use-saved` (fast plotting from saved data)
+- First run: `python test_vis.py` (computes, saves, and exports best batches)
+- Later plotting: `python test_vis.py --use-saved` (fast plotting from saved data)
+- Later export: `python test_vis.py --export-only` (fast export from saved data)
 - Force new computation: `python test_vis.py --force-recompute`
+- Export with plotting: `python test_vis.py --use-saved --export-data`
 """
