@@ -392,8 +392,8 @@ def export_best_batch_data(batch_data=None):
     # Write best.txt (observed + ground_truth sequence)
     print(f"\nSaving complete sequence (observed + ground_truth) to {best_txt_path}")
     with open(best_txt_path, 'w') as f:
-        f.write("# Complete trajectory sequence (observed + ground_truth)\n")
-        f.write("# Format: frame_idx\tped_idx\tx\ty\n")
+        # f.write("# Complete trajectory sequence (observed + ground_truth)\n")
+        # f.write("# Format: frame_idx\tped_idx\tx\ty\n")
         for ped_idx in range(num_peds):
             for frame_idx in range(total_len):
                 x, y = complete_sequence[ped_idx, frame_idx]
