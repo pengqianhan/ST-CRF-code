@@ -7,136 +7,126 @@ import torch
 # Update to load batch data instead of trajectory data
 output_folder = 'best_batches'
 best_batches_file = os.path.join(output_folder, 'best_batches_data.pkl')
+output_folder_vis = 'best_batches_baseline_vis'
+os.makedirs(output_folder_vis, exist_ok=True)
+
+def plot_batch_trajectories(batch, batch_rank, output_folder):
+    """
+    Plot trajectories for a single batch with proper styling and save to file.
+    
+    Args:
+        batch: Dictionary containing batch data with keys 'observed', 'predicted', 'ground_truth', etc.
+        batch_rank: Integer rank/index of the batch
+        output_folder: String path to output folder for saving plots
+    """
+    # Define colors for different pedestrians
+    colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(12, 10))
+    
+    # Extract batch data
+    batch_observed = batch['observed']
+    batch_predicted = batch['predicted'] 
+    batch_ground_truth = batch['ground_truth']
+    batch_ades = batch['pedestrian_ades']
+    batch_fdes = batch['pedestrian_fdes']
+    num_peds = len(batch_ades)
+    
+    # Plot each pedestrian
+    for ped_idx in range(num_peds):
+        color = colors[ped_idx % len(colors)]
+        
+        observed = batch_observed[ped_idx]
+        predicted = batch_predicted[ped_idx] 
+        ground_truth = batch_ground_truth[ped_idx]
+        ped_ade = batch_ades[ped_idx]
+        
+        # Plot trajectories
+        ax.plot(observed[:, 0], observed[:, 1], 
+                color=color, linewidth=2, alpha=0.8,
+                label=f'Ped {ped_idx+1} Hist (ADE: {ped_ade:.3f})', 
+                marker='o', markersize=3)
+        
+        ax.plot(predicted[:, 0], predicted[:, 1], 
+                color=color, linewidth=2, alpha=0.8, linestyle='--',
+                marker='s', markersize=3)
+        
+        ax.plot(ground_truth[:, 0], ground_truth[:, 1], 
+                color=color, linewidth=1.5, alpha=0.6, linestyle=':',
+                marker='^', markersize=3)
+        
+        # Mark start and end points
+        ax.scatter(observed[0, 0], observed[0, 1], color=color, s=60, marker='o', 
+                  alpha=1.0, edgecolors='black', linewidth=1)
+        ax.scatter(predicted[-1, 0], predicted[-1, 1], color=color, s=60, marker='s', 
+                  alpha=1.0, edgecolors='black', linewidth=1)
+        ax.scatter(ground_truth[-1, 0], ground_truth[-1, 1], color=color, s=60, marker='^', 
+                  alpha=1.0, edgecolors='black', linewidth=1)
+    
+    # Add legend explanation
+    ax.plot([], [], color='gray', linewidth=2, alpha=0.8, label='Historical')
+    ax.plot([], [], color='gray', linewidth=2, alpha=0.8, linestyle='--', label='Predicted')
+    ax.plot([], [], color='gray', linewidth=1.5, alpha=0.6, linestyle=':', label='Ground Truth')
+    
+    # Set labels and title
+    ax.set_xlabel('X coordinate', fontsize=12)
+    ax.set_ylabel('Y coordinate', fontsize=12)
+    ax.set_title(f'Batch Rank {batch_rank} - Dataset: {batch["dataset"]} - Step: {batch["step"]}\n'
+                f'Average ADE: {batch["avg_ade"]:.4f}, Average FDE: {batch["avg_fde"]:.4f}\n'
+                f'Number of Pedestrians: {num_peds}', fontsize=14)
+    ax.grid(True, alpha=0.3)
+    
+    # Create compact legend
+    handles, labels = ax.get_legend_handles_labels()
+    max_ped_labels = min(6, num_peds)
+    ped_handles = handles[:max_ped_labels]
+    ped_labels = labels[:max_ped_labels]
+    type_handles = handles[-3:]
+    type_labels = labels[-3:]
+    
+    if num_peds > max_ped_labels:
+        ped_labels[-1] = f'... and {num_peds - max_ped_labels + 1} more pedestrians'
+    
+    all_handles = ped_handles + type_handles
+    all_labels = ped_labels + type_labels
+    ax.legend(all_handles, all_labels, fontsize=9, loc='upper right', 
+             bbox_to_anchor=(1.0, 1.0))
+    
+    ax.set_aspect('equal', adjustable='box')
+    plt.tight_layout()
+    
+    # Save the plot
+    filename = f'batch_rank_{batch_rank:02d}_dataset_{batch["dataset"]}_step_{batch["step"]}_avg_ade_{batch["avg_ade"]:.4f}.png'
+    filepath = os.path.join(output_folder, filename)
+    plt.savefig(filepath, dpi=300, bbox_inches='tight')
+    print(f"Saved: {filepath}")
+    plt.close()
 
 def print_batch_info():
     """
     Load and print detailed information about the best batches data.
     """
-    try:
-        with open(best_batches_file, 'rb') as f:
-            best_batches = pickle.load(f)
-        print(f"Successfully loaded {len(best_batches)} best batches from saved data")
-        print("="*80)
-        
-        # Print overall statistics
-        print("OVERALL STATISTICS:")
-        print("-" * 40)
-        avg_ades = [batch['avg_ade'] for batch in best_batches]
-        avg_fdes = [batch['avg_fde'] for batch in best_batches]
-        total_pedestrians = sum(batch['num_pedestrians'] for batch in best_batches)
-        
-        print(f"Total batches: {len(best_batches)}")
-        print(f"Total pedestrians across all batches: {total_pedestrians}")
-        print(f"Average ADE range: {min(avg_ades):.4f} to {max(avg_ades):.4f}")
-        print(f"Average FDE range: {min(avg_fdes):.4f} to {max(avg_fdes):.4f}")
-        print(f"Mean of batch averages - ADE: {np.mean(avg_ades):.4f}, FDE: {np.mean(avg_fdes):.4f}")
-        print()
-        
-        # Print detailed information for each batch
-        print("DETAILED BATCH INFORMATION:")
-        print("="*80)
-        
-        for i, batch in enumerate(best_batches):
-            print(f"\nBATCH RANK {i+1}:")
-            print("-" * 50)
-            print(batch.keys())
-            print(len(batch['observed']))
-            print(batch['observed'][0].shape)
-            # 把batch['observed']中的所有元素拼接起来，得到一个形状为(num_ped，obs_len,2)的tensor,num_ped是len(batch['observed'])
-            # 把batch['observed']中的所有元素拼接起来，得到一个形状为(num_ped，obs_len,2)的tensor
-            observed_tensor = torch.stack([torch.tensor(obs) for obs in batch['observed']], dim=0)
-            print(f"Observed tensor shape==========: {observed_tensor.shape}")  # Should be (num_ped, obs_len, 2)
 
-
-            # Basic batch info
-            print(f"Dataset: {batch.get('dataset', 'Unknown')}")
-            print(f"Step: {batch.get('step', 'Unknown')}")
-            print(f"Number of pedestrians: {batch['num_pedestrians']}")
-            print(f"Average ADE: {batch['avg_ade']:.4f}")
-            print(f"Average FDE: {batch['avg_fde']:.4f}")
-            
-            # Pedestrian-level statistics
-            ped_ades = batch['pedestrian_ades']
-            ped_fdes = batch['pedestrian_fdes']
-            print(f"Individual pedestrian ADEs: {[f'{ade:.4f}' for ade in ped_ades]}")
-            print(f"Individual pedestrian FDEs: {[f'{fde:.4f}' for fde in ped_fdes]}")
-            print(f"Best pedestrian ADE: {min(ped_ades):.4f}")
-            print(f"Worst pedestrian ADE: {max(ped_ades):.4f}")
-            print(f"ADE std deviation: {np.std(ped_ades):.4f}")
-            
-            # Trajectory shape information
-            observed = batch['observed']
-            predicted = batch['predicted']
-            ground_truth = batch['ground_truth']
-            
-            print(f"Number of observed trajectories: {len(observed)}")
-            print(f"Number of predicted trajectories: {len(predicted)}")
-            print(f"Number of ground truth trajectories: {len(ground_truth)}")
-            
-            if len(observed) > 0:
-                print(f"Observed trajectory shape (first ped): {observed[0].shape}")
-                print(f"Predicted trajectory shape (first ped): {predicted[0].shape}")
-                print(f"Ground truth trajectory shape (first ped): {ground_truth[0].shape}")
-            
-            # Optional: Print first few points of first pedestrian for debugging
-            if len(observed) > 0 and i == 0:  # Only for first batch to avoid too much output
-                print(f"\nSample data for first pedestrian:")
-                print(f"First 3 observed points: {observed[0][:3]}")
-                print(f"First 3 predicted points: {predicted[0][:3]}")
-                print(f"First 3 ground truth points: {ground_truth[0][:3]}")
-            
-            # Stop after first 5 batches to avoid too much output
-            if i >= 4:
-                remaining = len(best_batches) - (i + 1)
-                if remaining > 0:
-                    print(f"\n... and {remaining} more batches")
-                break
-        
-        print("\n" + "="*80)
-        print("BATCH DATA LOADING COMPLETED SUCCESSFULLY")
-        print("="*80)
-        
-    except FileNotFoundError:
-        print(f"Error: File {best_batches_file} not found!")
-        print("Please run test_vis.py first to generate the batch data.")
-        return False
-    except Exception as e:
-        print(f"Error loading batch data: {e}")
-        return False
+    with open(best_batches_file, 'rb') as f:
+        best_batches = pickle.load(f)
+    print(f"Successfully loaded {len(best_batches)} best batches from saved data")
+    print("="*80)
+    
+    for i, batch in enumerate(best_batches):
+        print(f"\nBATCH RANK {i+1}:")
+        print("-" * 50) 
+        # Use the new plotting function
+        plot_batch_trajectories(batch, i+1, output_folder_vis)
     
     return True
 
-def print_data_structure():
-    """
-    Print the expected data structure for reference.
-    """
-    print("\nEXPECTED BATCH DATA STRUCTURE:")
-    print("-" * 40)
-    print("Each batch contains:")
-    print("  - avg_ade: float (average ADE for all pedestrians in batch)")
-    print("  - avg_fde: float (average FDE for all pedestrians in batch)")
-    print("  - pedestrian_ades: list of floats (ADE for each pedestrian)")
-    print("  - pedestrian_fdes: list of floats (FDE for each pedestrian)")
-    print("  - observed: list of arrays (historical trajectories, shape [obs_len, 2])")
-    print("  - predicted: list of arrays (predicted trajectories, shape [pred_len, 2])")
-    print("  - ground_truth: list of arrays (ground truth trajectories, shape [pred_len, 2])")
-    print("  - step: int (batch step number)")
-    print("  - num_pedestrians: int (number of pedestrians in batch)")
-    print("  - dataset: str (dataset name)")
-    print("  - model_path: str (path to model used)")
 
 if __name__ == "__main__":
     print("LOADING AND ANALYZING BEST BATCHES DATA")
     print("="*80)
     
-    # Print expected data structure
-    print_data_structure()
     
     # Load and print batch information
     success = print_batch_info()
     
-    if success:
-        print(f"\nData file location: {best_batches_file}")
-        print("Use this data for further analysis or visualization.")
-    else:
-        print("\nFailed to load batch data. Please check if the file exists and was generated correctly.")
