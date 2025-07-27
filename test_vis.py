@@ -665,7 +665,7 @@ for ROBUSTNESS in [0]:  #[-0.1, -0.01, 0, +0.01, +0.1]:
             obs_seq_len = args.obs_seq_len
             pred_seq_len = args.pred_seq_len
             # data_set = './datasets/' + args.dataset + '/'
-            data_set = './datasets/' + 'zara1' + '/'
+            data_set = './datasets/' + 'univ' + '/'
 
             dset_test = TrajectoryDataset(data_set + 'test/',
                                           obs_len=obs_seq_len,
