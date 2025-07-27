@@ -16,6 +16,9 @@ matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
+# Add a global parameter to control trajectory filtering
+APPLY_TRAJECTORY_FILTER = False  # Set to False to disable filtering and preserve all pedestrians
+
 # Static distance thresholds for trajectory filtering
 static_dist_dict = {
     'eth': 0.419,
@@ -186,8 +189,16 @@ def plot_best_batches(batch_data, num_batches=10):
             print("No saved best batches data found. Please run the full computation first.")
             return
     else:
-        # Sort batches by average ADE (ascending - lower is better)
-        sorted_batches = sorted(batch_data, key=lambda x: x['avg_ade'])
+        # Sort batches by a combination of ADE and number of pedestrians
+        # Prioritize batches with more pedestrians if ADE difference is small
+        def batch_score(batch):
+            ade = batch['avg_ade']
+            num_peds = batch['num_pedestrians']
+            # Penalty for having fewer pedestrians (encourage multi-pedestrian batches)
+            pedestrian_bonus = min(num_peds, 5) * 0.01  # Up to 0.05 bonus for 5+ pedestrians
+            return ade - pedestrian_bonus
+        
+        sorted_batches = sorted(batch_data, key=batch_score)
         
         # Select the best batches
         best_batches = sorted_batches[:num_batches]
@@ -350,8 +361,16 @@ def export_best_batch_data(batch_data=None):
             print("No saved best batches data found. Please run the full computation first.")
             return False
     else:
-        # Sort batches by average ADE (ascending - lower is better)
-        sorted_batches = sorted(batch_data, key=lambda x: x['avg_ade'])
+        # Sort batches by a combination of ADE and number of pedestrians
+        # Prioritize batches with more pedestrians if ADE difference is small
+        def batch_score(batch):
+            ade = batch['avg_ade']
+            num_peds = batch['num_pedestrians']
+            # Penalty for having fewer pedestrians (encourage multi-pedestrian batches)
+            pedestrian_bonus = min(num_peds, 5) * 0.01  # Up to 0.05 bonus for 5+ pedestrians
+            return ade - pedestrian_bonus
+        
+        sorted_batches = sorted(batch_data, key=batch_score)
         best_batches = sorted_batches
     
     if not best_batches:
@@ -366,15 +385,37 @@ def export_best_batch_data(batch_data=None):
     print(f"Average ADE: {best_batch['avg_ade']:.6f}, Average FDE: {best_batch['avg_fde']:.6f}")
     print(f"Number of pedestrians: {best_batch['num_pedestrians']}")
     
-    # Extract trajectory data
+    # Extract trajectory data and ADE scores
     observed_list = best_batch['observed']  # List of [obs_len, 2] arrays
     ground_truth_list = best_batch['ground_truth']  # List of [pred_len, 2] arrays  
     predicted_list = best_batch['predicted']  # List of [pred_len, 2] arrays
+    pedestrian_ades = best_batch['pedestrian_ades']  # List of ADE scores for each pedestrian
+    
+    # Find the 2 pedestrians with the lowest ADE scores
+    if len(pedestrian_ades) >= 2:
+        # Get indices of pedestrians sorted by ADE (ascending)
+        sorted_indices = sorted(range(len(pedestrian_ades)), key=lambda i: pedestrian_ades[i])
+        best_2_indices = sorted_indices[:2]  # Take the 2 best pedestrians
+        
+        print(f"\nSelecting 2 pedestrians with lowest ADE from this batch:")
+        for i, idx in enumerate(best_2_indices):
+            print(f"  Rank {i+1}: Pedestrian {idx}, ADE = {pedestrian_ades[idx]:.6f}")
+        
+        # Filter data to only include the 2 best pedestrians
+        observed_list = [observed_list[i] for i in best_2_indices]
+        ground_truth_list = [ground_truth_list[i] for i in best_2_indices]
+        predicted_list = [predicted_list[i] for i in best_2_indices]
+        
+    elif len(pedestrian_ades) == 1:
+        print(f"\nOnly 1 pedestrian available in this batch (ADE = {pedestrian_ades[0]:.6f})")
+    else:
+        print(f"\nNo pedestrians available in this batch")
+        return False
     
     # Convert to numpy arrays for easier processing
-    observed = np.stack(observed_list)  # [num_ped, obs_len, 2]
-    ground_truth = np.stack(ground_truth_list)  # [num_ped, pred_len, 2]
-    predicted = np.stack(predicted_list)  # [num_ped, pred_len, 2]
+    observed = np.stack(observed_list)  # [selected_num_ped, obs_len, 2]
+    ground_truth = np.stack(ground_truth_list)  # [selected_num_ped, pred_len, 2]
+    predicted = np.stack(predicted_list)  # [selected_num_ped, pred_len, 2]
     
     num_peds, obs_len, _ = observed.shape
     pred_len = ground_truth.shape[1]
@@ -418,14 +459,23 @@ def export_best_batch_data(batch_data=None):
     print(f"  - Coordinate format: frame_idx, ped_idx, x, y")
     print(f"  - Frame indices: best.txt (0-{total_len-1}), pred.txt ({obs_len}-{obs_len+pred_len-1})")
     
+    # Calculate individual ADE scores for the selected pedestrians
+    if len(pedestrian_ades) >= 2:
+        selected_ades = [pedestrian_ades[i] for i in best_2_indices]
+    else:
+        selected_ades = [pedestrian_ades[0]]
+    
     # Print summary statistics
     print(f"\nSummary statistics:")
-    print(f"  - Number of pedestrians: {num_peds}")
+    print(f"  - Number of pedestrians exported: {num_peds}")
+    print(f"  - Original batch had: {best_batch['num_pedestrians']} pedestrians")
+    print(f"  - Selected pedestrians' ADE scores: {[f'{ade:.6f}' for ade in selected_ades]}")
+    print(f"  - Average ADE of selected pedestrians: {np.mean(selected_ades):.6f}")
     print(f"  - Observation length: {obs_len} frames")
     print(f"  - Prediction length: {pred_len} frames")
     print(f"  - Total sequence length: {total_len} frames")
-    print(f"  - Best batch ADE: {best_batch['avg_ade']:.6f}")
-    print(f"  - Best batch FDE: {best_batch['avg_fde']:.6f}")
+    print(f"  - Original batch average ADE: {best_batch['avg_ade']:.6f}")
+    print(f"  - Original batch average FDE: {best_batch['avg_fde']:.6f}")
     
     return True
 
@@ -445,7 +495,7 @@ def load_and_export_saved_batch_data():
 
 def test(KSTEPS=1, dataset='eth'):
 
-    global loader_test, model, ROBUSTNESS
+    global loader_test, model, ROBUSTNESS, APPLY_TRAJECTORY_FILTER
     threshold = static_dist_dict.get(dataset, 0.3)  # Default threshold if dataset not found
     model.eval()
     ade_bigls = []
@@ -461,13 +511,18 @@ def test(KSTEPS=1, dataset='eth'):
         ####
         # Filter trajectories based on movement distance between time steps 7 and 5 (indices 6 and 4)
         # obs_traj shape: [batch, num_ped, 2, obs_len]
-        # Compute movement distance for each pedestrian
-        movement_distances = torch.norm(obs_traj[:, :, :, 6] - obs_traj[:, :, :, 4], dim=2)  # [batch, num_ped]
-        valid_peds = movement_distances > threshold  # [batch, num_ped]
-        
-        # Skip this batch if no pedestrians meet the movement criteria
-        if not torch.any(valid_peds):
-            continue
+        if APPLY_TRAJECTORY_FILTER:
+            # Compute movement distance for each pedestrian
+            movement_distances = torch.norm(obs_traj[:, :, :, 6] - obs_traj[:, :, :, 4], dim=2)  # [batch, num_ped]
+            valid_peds = movement_distances > threshold  # [batch, num_ped]
+            
+            # Skip this batch if no pedestrians meet the movement criteria
+            if not torch.any(valid_peds):
+                continue
+        else:
+            # No filtering - all pedestrians are valid
+            num_peds = obs_traj.shape[1]
+            valid_peds = torch.ones(1, num_peds, dtype=torch.bool, device=obs_traj.device)  # [batch, num_ped]
             
         seq = torch.cat((obs_traj, pred_traj_gt), dim=3)##[batch,num_ped,2,obs_len+pred_len]=[1, 5, 2, 20]
         seq = seq.permute(0,3,1,2)##[batch,obs_len+pred_len,num_ped,2]
@@ -607,6 +662,7 @@ for ROBUSTNESS in [0]:  #[-0.1, -0.01, 0, +0.01, +0.1]:
     print("*" * 30)
     print("*" * 30)
     print("ROBUSTNESS:", ROBUSTNESS)
+    print("TRAJECTORY FILTERING:", "ENABLED" if APPLY_TRAJECTORY_FILTER else "DISABLED")
     print("*" * 30)
     print("*" * 30)
     def seed_torch(seed=42):
@@ -665,7 +721,7 @@ for ROBUSTNESS in [0]:  #[-0.1, -0.01, 0, +0.01, +0.1]:
             obs_seq_len = args.obs_seq_len
             pred_seq_len = args.pred_seq_len
             # data_set = './datasets/' + args.dataset + '/'
-            data_set = './datasets/' + 'univ' + '/'
+            data_set = './datasets/' + 'hotel' + '/'
 
             dset_test = TrajectoryDataset(data_set + 'test/',
                                           obs_len=obs_seq_len,
@@ -887,9 +943,13 @@ MODIFICATIONS SUMMARY:
 
 This script has been enhanced with the following features:
 
+0. **Trajectory filtering control**: Added APPLY_TRAJECTORY_FILTER parameter to control whether
+   to filter pedestrians based on movement distance. When False, all pedestrians in each batch
+   are preserved, ensuring multi-pedestrian scenarios in the exported data.
+
 1. **Batch-level analysis**: Computes average ADE for all pedestrians within each batch 
-   and selects the 10 best batches (lowest average ADE). Data is saved to 
-   'best_batches/best_batches_data.pkl'
+   and selects the 10 best batches using a combined score of ADE and pedestrian count. 
+   Data is saved to 'best_batches/best_batches_data.pkl'
 
 2. **Multi-pedestrian visualization**: Each batch is visualized as a single plot showing 
    all pedestrians in that batch with different colors. Different batches are shown 
@@ -929,8 +989,9 @@ This script has been enhanced with the following features:
    - Export trajectory data for use with other models
 
 8. **Data export features**:
-   - Exports best batch's observed+ground_truth to `best_batches/best.txt`
+   - Exports the 2 pedestrians with lowest ADE from the best batch to `best_batches/best.txt`
    - Exports corresponding predictions to `best_batches/pred.txt`
+   - If batch has only 1 pedestrian, exports that single pedestrian
    - Format: frame_idx, ped_idx, x, y (tab-separated)
    - Ready for use with other trajectory prediction models
 
@@ -940,4 +1001,15 @@ Usage examples:
 - Later export: `python test_vis.py --export-only` (fast export from saved data)
 - Force new computation: `python test_vis.py --force-recompute`
 - Export with plotting: `python test_vis.py --use-saved --export-data`
+
+TRAJECTORY FILTERING CONTROL:
+- To disable filtering and preserve all pedestrians: Set APPLY_TRAJECTORY_FILTER = False (line 20)
+- To enable filtering (original behavior): Set APPLY_TRAJECTORY_FILTER = True
+- When filtering is disabled, all pedestrians in each batch are preserved in the output
+
+DATA EXPORT BEHAVIOR:
+- From the best batch (lowest ADE), selects the 2 pedestrians with lowest individual ADE scores
+- Exports these 2 pedestrians' complete trajectories (observed + ground truth) to best.txt
+- Exports their predicted trajectories to pred.txt
+- If batch has fewer than 2 pedestrians, exports all available pedestrians
 """
