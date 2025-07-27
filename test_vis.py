@@ -402,8 +402,8 @@ def export_best_batch_data(batch_data=None):
     # Write pred.txt (predicted sequence)
     print(f"Saving predicted sequence to {pred_txt_path}")
     with open(pred_txt_path, 'w') as f:
-        f.write("# Predicted trajectory sequence\n")
-        f.write("# Format: frame_idx\tped_idx\tx\ty\n")
+        # f.write("# Predicted trajectory sequence\n")
+        # f.write("# Format: frame_idx\tped_idx\tx\ty\n")
         for ped_idx in range(num_peds):
             for frame_idx in range(pred_len):
                 x, y = predicted[ped_idx, frame_idx]
