@@ -9,12 +9,20 @@ import numpy as np
 import os
 from collections import defaultdict
 
+# Get the directory where this script is located
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 def parse_trajectory_file(file_path):
     """Parse trajectory file and return data organized by pedestrian ID."""
     trajectories = defaultdict(list)
     
-    if not os.path.exists(file_path):
+    # Convert to absolute path relative to script directory
+    abs_path = os.path.join(SCRIPT_DIR, file_path)
+    if not os.path.exists(abs_path):
+        print(f"Warning: File not found: {abs_path}")
         return trajectories
+    
+    file_path = abs_path
     
     with open(file_path, 'r') as f:
         for line in f:
@@ -160,10 +168,10 @@ def plot_dataset_comparison(dataset_name):
               fontsize=14, fontweight='bold')
     plt.grid(True, alpha=0.3)
     plt.legend(loc='best', fontsize=10)
-    plt.axis('equal')
+    # plt.axis('equal')  # Remove equal aspect to prevent distortion
     
-    # Save figure
-    output_file = f"{dataset_name}_comparison.png"
+    # Save figure in the script directory
+    output_file = os.path.join(SCRIPT_DIR, f"{dataset_name}_comparison.png")
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Saved: {output_file}")
@@ -295,7 +303,7 @@ def plot_all_datasets_combined():
         
         # ax.set_xlabel('X Position (m)', fontsize=10)
         # ax.set_ylabel('Y Position (m)', fontsize=10)
-        ax.set_title(f'{dataset_name.replace("cross_", "").title()}', fontsize=12, fontweight='bold')
+        ax.set_title(f'{dataset_name.replace("cross_", "").title()}', fontsize=16, fontweight='bold')
         ax.grid(True, alpha=0.3)
         
         # Let matplotlib auto-scale the axes for each dataset with tight margins
@@ -305,22 +313,25 @@ def plot_all_datasets_combined():
         # Add small margins around the data
         xlim = ax.get_xlim()
         ylim = ax.get_ylim()
-        x_margin = (xlim[1] - xlim[0]) * 0.05
-        y_margin = (ylim[1] - ylim[0]) * 0.05
+        x_margin = (xlim[1] - xlim[0]) * 0.1
+        y_margin = (ylim[1] - ylim[0]) * 0.1
         ax.set_xlim(xlim[0] - x_margin, xlim[1] + x_margin)
         ax.set_ylim(ylim[0] - y_margin, ylim[1] + y_margin)
         
-        ax.set_aspect('equal')
+        # Set a reasonable aspect ratio that doesn't distort the visualization
+        # Allow some flexibility rather than enforcing equal aspect
+        ax.set_aspect('auto')
     
     # Create a single legend outside the subplots
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='center', bbox_to_anchor=(0.5, -0.02), ncol=5, fontsize=10)
+    fig.legend(handles, labels, loc='center', bbox_to_anchor=(0.5, -0.02), ncol=5, fontsize=14)
     
     # Adjust layout and save
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.08)  # Make room for legend
-    plt.savefig('all_datasets_comparison.png', dpi=300, bbox_inches='tight')
-    print("Saved: all_datasets_comparison.png")
+    output_file = os.path.join(SCRIPT_DIR, 'all_datasets_comparison.png')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    print(f"Saved: {output_file}")
     plt.show()
 
 def main():
@@ -330,9 +341,9 @@ def main():
     print("Generating trajectory comparison plots for paper...")
     
     # Generate individual plots
-    for dataset in datasets:
-        print(f"\nProcessing {dataset}...")
-        plot_dataset_comparison(dataset)
+    # for dataset in datasets:
+    #     print(f"\nProcessing {dataset}...")
+    #     plot_dataset_comparison(dataset)
     
     # Generate combined plot
     print(f"\nGenerating combined plot...")
