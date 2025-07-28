@@ -513,7 +513,7 @@ def test(KSTEPS=1, dataset='eth'):
         # obs_traj shape: [batch, num_ped, 2, obs_len]
         if APPLY_TRAJECTORY_FILTER:
             # Compute movement distance for each pedestrian
-            movement_distances = torch.norm(obs_traj[:, :, :, 6] - obs_traj[:, :, :, 4], dim=2)  # [batch, num_ped]
+            movement_distances = torch.norm(obs_traj[:, :, :, 7] - obs_traj[:, :, :, 5], dim=2)  # [batch, num_ped]
             valid_peds = movement_distances > threshold  # [batch, num_ped]
             
             # Skip this batch if no pedestrians meet the movement criteria
