@@ -174,25 +174,8 @@ def plot_all_datasets_combined():
     datasets = ['cross_hotel', 'cross_univ', 'cross_zara1', 'cross_zara2']
     
     # Create figure with subplots in a single row
-    fig, axes = plt.subplots(1, 4, figsize=(20, 5))
+    fig, axes = plt.subplots(1, 4, figsize=(16, 4))
     
-    # Calculate reference aspect ratio from univ dataset for consistency
-    univ_gt = parse_trajectory_file("stcrf/cross_univ/best.txt")
-    if univ_gt:
-        all_x = []
-        all_y = []
-        for ped_data in univ_gt.values():
-            for _, x, y in ped_data:
-                all_x.append(x)
-                all_y.append(y)
-        if all_x and all_y:
-            x_range = max(all_x) - min(all_x)
-            y_range = max(all_y) - min(all_y)
-            reference_aspect = x_range / y_range if y_range > 0 else 1.0
-        else:
-            reference_aspect = 1.0
-    else:
-        reference_aspect = 1.0
     
     for idx, dataset_name in enumerate(datasets):
         ax = axes[idx]
@@ -263,8 +246,8 @@ def plot_all_datasets_combined():
                 if observed_indices:
                     obs_x = [x_coords[i] for i in observed_indices]
                     obs_y = [y_coords[i] for i in observed_indices]
-                    ax.plot(obs_x, obs_y, 'o-', color=observed_color, linewidth=2, 
-                            markersize=4, label='Observed' if not labels_added['observed'] else "")
+                    ax.plot(obs_x, obs_y, 'o-', color=observed_color, linewidth=3, 
+                            markersize=6, label='Observed' if not labels_added['observed'] else "")
                     labels_added['observed'] = True
                 
                 # Plot future trajectory (dashed line)
@@ -274,9 +257,9 @@ def plot_all_datasets_combined():
                     # Connect last observed with first future
                     if observed_indices and future_indices:
                         ax.plot([obs_x[-1], fut_x[0]], [obs_y[-1], fut_y[0]], 
-                                '--', color=future_color, linewidth=2, alpha=0.8)
-                    ax.plot(fut_x, fut_y, 's--', color=future_color, linewidth=2, 
-                            markersize=4, alpha=0.8, 
+                                '--', color=future_color, linewidth=3, alpha=0.8)
+                    ax.plot(fut_x, fut_y, 's--', color=future_color, linewidth=3, 
+                            markersize=6, alpha=0.8, 
                             label='Ground Truth Future' if not labels_added['future'] else "")
                     labels_added['future'] = True
             
@@ -285,8 +268,8 @@ def plot_all_datasets_combined():
                 traj = stcrf_trajectories[ped_id]
                 x_coords = [t[1] for t in traj]
                 y_coords = [t[2] for t in traj]
-                ax.plot(x_coords, y_coords, '^-', color=model_colors['stcrf'], linewidth=2, 
-                        markersize=4, alpha=0.8,
+                ax.plot(x_coords, y_coords, '^-', color=model_colors['stcrf'], linewidth=3, 
+                        markersize=6, alpha=0.8,
                         label='ST-CRF' if not labels_added['stcrf'] else "")
                 labels_added['stcrf'] = True
             
@@ -295,8 +278,8 @@ def plot_all_datasets_combined():
                 traj = social_implicit_trajectories[ped_id]
                 x_coords = [t[1] for t in traj]
                 y_coords = [t[2] for t in traj]
-                ax.plot(x_coords, y_coords, 'v-', color=model_colors['social_implicit'], linewidth=2, 
-                        markersize=4, alpha=0.8,
+                ax.plot(x_coords, y_coords, 'v-', color=model_colors['social_implicit'], linewidth=3, 
+                        markersize=6, alpha=0.8,
                         label='Social-Implicit' if not labels_added['social_implicit'] else "")
                 labels_added['social_implicit'] = True
             
@@ -305,8 +288,8 @@ def plot_all_datasets_combined():
                 traj = social_stgcnn_trajectories[ped_id]
                 x_coords = [t[1] for t in traj]
                 y_coords = [t[2] for t in traj]
-                ax.plot(x_coords, y_coords, 'd-', color=model_colors['social_stgcnn'], linewidth=2, 
-                        markersize=4, alpha=0.8,
+                ax.plot(x_coords, y_coords, 'd-', color=model_colors['social_stgcnn'], linewidth=3, 
+                        markersize=6, alpha=0.8,
                         label='Social-STGCNN' if not labels_added['social_stgcnn'] else "")
                 labels_added['social_stgcnn'] = True
         
@@ -315,33 +298,17 @@ def plot_all_datasets_combined():
         ax.set_title(f'{dataset_name.replace("cross_", "").title()}', fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
         
-        # Let matplotlib auto-scale the axes for each dataset
+        # Let matplotlib auto-scale the axes for each dataset with tight margins
         ax.relim()
-        ax.autoscale_view()
+        ax.autoscale_view(tight=True)
         
-        # Get current axis limits
+        # Add small margins around the data
         xlim = ax.get_xlim()
         ylim = ax.get_ylim()
-        
-        # Calculate current data ranges
-        x_range = xlim[1] - xlim[0]
-        y_range = ylim[1] - ylim[0]
-        
-        # Adjust axis limits to match reference aspect ratio while minimizing whitespace
-        current_aspect = x_range / y_range
-        
-        if current_aspect > reference_aspect:
-            # Current plot is too wide, reduce y range
-            new_y_range = x_range / reference_aspect
-            y_center = (ylim[0] + ylim[1]) / 2
-            new_ylim = (y_center - new_y_range/2, y_center + new_y_range/2)
-            ax.set_ylim(new_ylim)
-        else:
-            # Current plot is too tall, reduce x range  
-            new_x_range = y_range * reference_aspect
-            x_center = (xlim[0] + xlim[1]) / 2
-            new_xlim = (x_center - new_x_range/2, x_center + new_x_range/2)
-            ax.set_xlim(new_xlim)
+        x_margin = (xlim[1] - xlim[0]) * 0.05
+        y_margin = (ylim[1] - ylim[0]) * 0.05
+        ax.set_xlim(xlim[0] - x_margin, xlim[1] + x_margin)
+        ax.set_ylim(ylim[0] - y_margin, ylim[1] + y_margin)
         
         ax.set_aspect('equal')
     
