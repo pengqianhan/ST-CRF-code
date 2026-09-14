@@ -128,3 +128,6 @@ dmypy.json
 # Pyre type checker
 .pyre/
 *.pkl
+
+# Exception: keep all checkpoint_deter artifacts tracked (args/metrics pkl + val_best.pth)
+!checkpoint_deter/**
