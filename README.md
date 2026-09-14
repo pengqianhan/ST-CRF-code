@@ -43,13 +43,21 @@ The preprocessed dataset caches in `./pkls/` are stored as one zip archive per f
 **Extract them before the first run:**
 
 ```
+python pkls/extract_pkls.py
+```
+
+The script only uses the Python standard library. It skips archives that have already
+been extracted (`--force` overwrites them anyway), and `--list` shows what each archive
+contains without writing anything.
+
+If you prefer to do it by hand, note that the archives are named with a leading `._`,
+which makes them hidden files, so a plain `unzip *.zip` will not match anything:
+
+```
 cd pkls
 find . -maxdepth 1 -name "*.zip" -exec unzip -o {} \;
 cd ..
 ```
-
-Note that the archives are named with a leading `._`, which makes them hidden files, so a
-plain `unzip *.zip` will not match anything - use the `find` command above.
 
 The extracted caches take about 1.2 GB, so make sure enough disk space is available.
 
