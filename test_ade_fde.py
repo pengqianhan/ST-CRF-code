@@ -116,11 +116,11 @@ for ROBUSTNESS in [0]:  #[-0.1, -0.01, 0, +0.01, +0.1]:
     seed_torch()
 
     paths = [
-        './checkpoint/stcrf_eth',
-        './checkpoint/stcrf_hotel',
-        './checkpoint/stcrf_univ',
-        './checkpoint/stcrf_zara1',
-        './checkpoint/stcrf_zara2',
+        './checkpoint_deter/stcrf_eth',
+        './checkpoint_deter/stcrf_hotel',
+        './checkpoint_deter/stcrf_univ',
+        './checkpoint_deter/stcrf_zara1',
+        './checkpoint_deter/stcrf_zara2',
     ]
 
     KSTEPS = 1## use this metric to evaluate the model

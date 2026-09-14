@@ -1,7 +1,21 @@
-networkx==2.2
-numpy==1.19.4
-scikit_learn==1.0.1
-scipy==0.19.1
-torch==1.9.0+cu111
-tqdm==4.54.1
-pandas
+# Versions below match the environment the code was developed and tested with
+# (Python 3.11.3).
+#
+# PyTorch is pinned to the CUDA 12.1 build, which is not on PyPI. Install it with:
+#   pip install torch==2.3.0 --index-url https://download.pytorch.org/whl/cu121
+# then install the rest with:
+#   pip install -r requirements.txt
+
+torch==2.3.0
+numpy==1.26.4
+networkx==2.8.4
+tqdm==4.65.0
+
+# provides `from torchcrf import CRF` (utils_crf.py), pulled in by train.py
+pytorch-crf==0.7.2
+
+# only needed for compute_params.py
+torchinfo==1.8.0
+
+# Removed from the previous pin list because nothing in the repository imports
+# them: scipy, scikit_learn, pandas.
