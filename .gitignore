@@ -131,3 +131,6 @@ dmypy.json
 
 # Exception: keep all checkpoint_deter artifacts tracked (args/metrics pkl + val_best.pth)
 !checkpoint_deter/**
+
+best_batches/
+plot_vis/
