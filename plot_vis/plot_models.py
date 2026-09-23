@@ -181,8 +181,9 @@ def plot_all_datasets_combined():
     """Plot all four datasets in a single figure with subplots."""
     datasets = ['cross_hotel', 'cross_univ', 'cross_zara1', 'cross_zara2']
     
-    # Create figure with subplots in a single row
-    fig, axes = plt.subplots(1, 4, figsize=(16, 4))
+    # Create figure with subplots in a 2x2 grid
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    axes = axes.flatten()
     
     
     for idx, dataset_name in enumerate(datasets):
@@ -324,7 +325,7 @@ def plot_all_datasets_combined():
     
     # Create a single legend outside the subplots
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='center', bbox_to_anchor=(0.5, -0.02), ncol=5, fontsize=14)
+    fig.legend(handles, labels, loc='center', bbox_to_anchor=(0.5, -0.04), ncol=3, fontsize=14)
     
     # Adjust layout and save
     plt.tight_layout()
