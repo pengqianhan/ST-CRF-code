@@ -171,9 +171,9 @@ def plot_dataset_comparison(dataset_name):
     # plt.axis('equal')  # Remove equal aspect to prevent distortion
     
     # Save figure in the script directory
-    output_file = os.path.join(SCRIPT_DIR, f"{dataset_name}_comparison.png")
+    output_file = os.path.join(SCRIPT_DIR, f"{dataset_name}_comparison.pdf")
     plt.tight_layout()
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.savefig(output_file, bbox_inches='tight')
     print(f"Saved: {output_file}")
     plt.show()
 
@@ -182,7 +182,7 @@ def plot_all_datasets_combined():
     datasets = ['cross_hotel', 'cross_univ', 'cross_zara1', 'cross_zara2']
     
     # Create figure with subplots in a 2x2 grid
-    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    fig, axes = plt.subplots(2, 2, figsize=(3.36, 3.3))  # IEEE Access column width, so fonts print at true size
     axes = axes.flatten()
     
     
@@ -230,8 +230,8 @@ def plot_all_datasets_combined():
         
         # Define colors for different models
         model_colors = {
-            'stcrf': '#00FF00',         # Green
-            'social_implicit': '#FFFF00',  # Yellow
+            'stcrf': '#1B9E3A',         # Green
+            'social_implicit': '#E69F00',  # Orange (yellow is unreadable on white)
             'social_stgcnn': '#0000FF'     # Blue
         }
         
@@ -255,8 +255,8 @@ def plot_all_datasets_combined():
                 if observed_indices:
                     obs_x = [x_coords[i] for i in observed_indices]
                     obs_y = [y_coords[i] for i in observed_indices]
-                    ax.plot(obs_x, obs_y, 'o-', color=observed_color, linewidth=3, 
-                            markersize=6, label='Observed' if not labels_added['observed'] else "")
+                    ax.plot(obs_x, obs_y, 'o-', color=observed_color, linewidth=1.2, 
+                            markersize=2.5, label='Observed' if not labels_added['observed'] else "")
                     labels_added['observed'] = True
                 
                 # Plot future trajectory (dashed line)
@@ -266,9 +266,9 @@ def plot_all_datasets_combined():
                     # Connect last observed with first future
                     if observed_indices and future_indices:
                         ax.plot([obs_x[-1], fut_x[0]], [obs_y[-1], fut_y[0]], 
-                                '--', color=future_color, linewidth=3, alpha=0.8)
-                    ax.plot(fut_x, fut_y, 's--', color=future_color, linewidth=3, 
-                            markersize=6, alpha=0.8, 
+                                '--', color=future_color, linewidth=1.2, alpha=0.8)
+                    ax.plot(fut_x, fut_y, 's--', color=future_color, linewidth=1.2, 
+                            markersize=2.5, alpha=0.8, 
                             label='Ground Truth Future' if not labels_added['future'] else "")
                     labels_added['future'] = True
             
@@ -277,8 +277,8 @@ def plot_all_datasets_combined():
                 traj = stcrf_trajectories[ped_id]
                 x_coords = [t[1] for t in traj]
                 y_coords = [t[2] for t in traj]
-                ax.plot(x_coords, y_coords, '^-', color=model_colors['stcrf'], linewidth=3, 
-                        markersize=6, alpha=0.8,
+                ax.plot(x_coords, y_coords, '^-', color=model_colors['stcrf'], linewidth=1.2, 
+                        markersize=2.5, alpha=0.8,
                         label='ST-CRF' if not labels_added['stcrf'] else "")
                 labels_added['stcrf'] = True
             
@@ -287,8 +287,8 @@ def plot_all_datasets_combined():
                 traj = social_implicit_trajectories[ped_id]
                 x_coords = [t[1] for t in traj]
                 y_coords = [t[2] for t in traj]
-                ax.plot(x_coords, y_coords, 'v-', color=model_colors['social_implicit'], linewidth=3, 
-                        markersize=6, alpha=0.8,
+                ax.plot(x_coords, y_coords, 'v-', color=model_colors['social_implicit'], linewidth=1.2, 
+                        markersize=2.5, alpha=0.8,
                         label='Social-Implicit' if not labels_added['social_implicit'] else "")
                 labels_added['social_implicit'] = True
             
@@ -297,15 +297,18 @@ def plot_all_datasets_combined():
                 traj = social_stgcnn_trajectories[ped_id]
                 x_coords = [t[1] for t in traj]
                 y_coords = [t[2] for t in traj]
-                ax.plot(x_coords, y_coords, 'd-', color=model_colors['social_stgcnn'], linewidth=3, 
-                        markersize=6, alpha=0.8,
+                ax.plot(x_coords, y_coords, 'd-', color=model_colors['social_stgcnn'], linewidth=1.2, 
+                        markersize=2.5, alpha=0.8,
                         label='Social-STGCNN' if not labels_added['social_stgcnn'] else "")
                 labels_added['social_stgcnn'] = True
         
         # ax.set_xlabel('X Position (m)', fontsize=10)
         # ax.set_ylabel('Y Position (m)', fontsize=10)
-        ax.set_title(f'{dataset_name.replace("cross_", "").title()}', fontsize=16, fontweight='bold')
-        ax.grid(True, alpha=0.3)
+        ax.set_title(f'{dataset_name.replace("cross_", "").title()}', fontsize=8, pad=2)
+        ax.grid(True, alpha=0.3, linewidth=0.4)
+        ax.tick_params(labelsize=6, length=2, width=0.5, pad=1.5)
+        for spine in ax.spines.values():
+            spine.set_linewidth(0.5)
         
         # Let matplotlib auto-scale the axes for each dataset with tight margins
         ax.relim()
@@ -325,13 +328,14 @@ def plot_all_datasets_combined():
     
     # Create a single legend outside the subplots
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='center', bbox_to_anchor=(0.5, -0.04), ncol=3, fontsize=14)
+    fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 0.02), ncol=3, fontsize=7,
+               frameon=False, handlelength=1.8, handletextpad=0.4, columnspacing=0.8)
     
     # Adjust layout and save
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.08)  # Make room for legend
-    output_file = os.path.join(SCRIPT_DIR, 'all_datasets_comparison.png')
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    output_file = os.path.join(SCRIPT_DIR, 'all_datasets_comparison.pdf')
+    plt.savefig(output_file, bbox_inches='tight')
     print(f"Saved: {output_file}")
     plt.show()
 
