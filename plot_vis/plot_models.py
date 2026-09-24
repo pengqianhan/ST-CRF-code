@@ -339,6 +339,101 @@ def plot_all_datasets_combined():
     print(f"Saved: {output_file}")
     plt.show()
 
+def world_to_image(xy, H):
+    """Map world coordinates (m) to pixel coordinates via the inverse of an image->world homography."""
+    xy = np.asarray(xy, dtype=float)
+    pts = np.column_stack([xy, np.ones(len(xy))]) @ np.linalg.inv(H).T
+    return pts[:, :2] / pts[:, 2:3]
+
+def plot_zara1_on_scene(background_frame=340, output_name='zara1_scene_comparison.pdf'):
+    """Plot the ETH-trained models' predictions on the Zara1 test scene, over the real camera frame.
+
+    This sample is annotated pedestrians 12 and 13 in video frames 340-530 (observed 340-410, future 420-530);
+    frame 340 shows them at the start of their observed trajectories, frame 410 at the end.
+    """
+    import matplotlib.patheffects as pe
+    from matplotlib.lines import Line2D
+
+    dataset_name = 'cross_zara1'
+    frame_file = os.path.join(SCRIPT_DIR, 'scene', f'crowds_zara01_frame{background_frame:04d}.png')
+    if not os.path.exists(frame_file):
+        import cv2
+        cap = cv2.VideoCapture(os.path.join(SCRIPT_DIR, 'scene', 'crowds_zara01.avi'))
+        cap.set(cv2.CAP_PROP_POS_FRAMES, background_frame)
+        ok, frame = cap.read()
+        assert ok, f"Cannot read frame {background_frame}"
+        cv2.imwrite(frame_file, frame)
+    image = plt.imread(frame_file)
+    H = np.loadtxt(os.path.join(SCRIPT_DIR, 'scene', 'crowds_zara01_H.txt'))
+
+    gt_trajectories = parse_trajectory_file(f"stcrf/{dataset_name}/best.txt")
+    predictions = [
+        # (trajectories, colour, marker, label)
+        (parse_trajectory_file(f"social_stgcnn/{dataset_name}/pred.txt"), '#1F5BFF', 'D', 'Social-STGCNN'),
+        (parse_trajectory_file(f"social_implicit/{dataset_name}/pred.txt"), '#FFB000', 'v', 'Social-Implicit'),
+        (parse_trajectory_file(f"stcrf/{dataset_name}/pred.txt"), '#00D84A', '^', 'ST-CRF (ours)'),
+    ]
+    observed_color = '#E040FB'      # Magenta for observed
+    future_color = '#FF2D2D'        # Red for future ground truth
+
+    # Crop to the walkway around the trajectories (pixels); the figure keeps the crop's aspect ratio
+    x_min, x_max, y_min, y_max = 140, 720, 230, 490
+    fig_w = 3.36  # IEEE Access column width, so fonts print at true size
+    img_h = fig_w * (y_max - y_min) / (x_max - x_min)
+    legend_h = 0.34
+    fig = plt.figure(figsize=(fig_w, img_h + legend_h))
+    ax = fig.add_axes([0, legend_h / (img_h + legend_h), 1, img_h / (img_h + legend_h)])
+    ax.imshow(image, zorder=0)
+    ax.imshow(np.ones_like(image), alpha=0.18, zorder=1)  # light veil so the trajectories stand out
+
+    # White outline keeps each line readable over bright and dark parts of the frame
+    outline = [pe.Stroke(linewidth=2.6, foreground='white'), pe.Normal()]
+    line_kw = dict(linewidth=1.4, markersize=3.2, markeredgecolor='white', markeredgewidth=0.4,
+                   path_effects=outline, zorder=3)
+
+    for ped_id in sorted(gt_trajectories):
+        traj = gt_trajectories[ped_id]
+        obs = world_to_image([(t[1], t[2]) for t in traj if t[0] <= 7], H)
+        fut = world_to_image([(t[1], t[2]) for t in traj if t[0] >= 8], H)
+        fut = np.vstack([obs[-1:], fut])  # connect last observed point with the future
+
+        for trajectories, color, marker, _ in predictions:
+            if ped_id in trajectories:
+                pred = world_to_image([(t[1], t[2]) for t in trajectories[ped_id]], H)
+                pred = np.vstack([obs[-1:], pred])
+                # Mark only the predicted endpoint to keep the overlapping lines readable
+                ax.plot(pred[:, 0], pred[:, 1], '-', color=color, marker=marker, markevery=[-1],
+                        alpha=0.95, **{**line_kw, 'markersize': 4.5, 'zorder': 4})
+        ax.plot(fut[:, 0], fut[:, 1], '--', color=future_color, marker='s', markevery=range(1, len(fut)),
+                **{**line_kw, 'linewidth': 1.1, 'markersize': 2.6, 'markeredgewidth': 0,
+                   'path_effects': [pe.Stroke(linewidth=1.9, foreground='white'), pe.Normal()], 'zorder': 5})
+        ax.plot(obs[:, 0], obs[:, 1], '-', color=observed_color, marker='o', **{**line_kw, 'zorder': 6})
+        ax.plot(*obs[0], 'o', color='white', markersize=4.5, markeredgecolor=observed_color,
+                markeredgewidth=1.2, zorder=7)  # start of the observation
+        ax.annotate('', xy=fut[-1], xytext=fut[-2], zorder=5,
+                    arrowprops=dict(arrowstyle='-|>', color=future_color, lw=1.2, mutation_scale=9))
+
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_max, y_min)
+    ax.set_axis_off()
+
+    ax.text(0.015, 0.975, r'Train: ETH  $\rightarrow$  Test: Zara1 (zero-shot)', transform=ax.transAxes,
+            fontsize=7, color='white', va='top', ha='left', zorder=8,
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='black', alpha=0.6, edgecolor='none'))
+
+    handles = [
+        Line2D([], [], color=observed_color, marker='o', markersize=3.2, linewidth=1.4, label='Observed'),
+        Line2D([], [], color=future_color, marker='s', markersize=3.2, linewidth=1.4, linestyle='--',
+               label='Ground Truth Future'),
+    ] + [Line2D([], [], color=c, marker=m, markersize=3.2, linewidth=1.4, label=l) for _, c, m, l in predictions[::-1]]
+    fig.legend(handles=handles, loc='lower center', bbox_to_anchor=(0.5, 0), ncol=3, fontsize=7,
+               frameon=False, handlelength=1.8, handletextpad=0.4, columnspacing=0.8, borderaxespad=0.1)
+
+    output_file = os.path.join(SCRIPT_DIR, output_name)
+    plt.savefig(output_file, bbox_inches='tight', pad_inches=0.01, dpi=300)
+    print(f"Saved: {output_file}")
+    plt.show()
+
 def main():
     """Main function to generate all plots."""
     datasets = ['cross_hotel', 'cross_univ', 'cross_zara1', 'cross_zara2']
@@ -353,7 +448,11 @@ def main():
     # Generate combined plot
     print(f"\nGenerating combined plot...")
     plot_all_datasets_combined()
-    
+
+    # Generate Zara1 plot over the real scene
+    print(f"\nGenerating Zara1 scene plot...")
+    plot_zara1_on_scene()
+
     print("\nAll plots generated successfully!")
 
 if __name__ == "__main__":
