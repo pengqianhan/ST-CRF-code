@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+# data, caches, downloaded weights and outputs
+datasets/
+cache/
+checkpoints/
+results/
+results_analysis/
+*.zip
