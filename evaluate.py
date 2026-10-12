@@ -47,6 +47,9 @@ if __name__ == '__main__':
     ap.add_argument('--seeds', nargs='+', type=int, default=None, help='default: all seeds found')
     ap.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu')
     a = ap.parse_args()
+    # as in the training runs of run_all.py, whose test results are those reported in the paper
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
     for exp in a.exps:
         for pair in a.pairs:
             for path in sorted(glob.glob(os.path.join(ROOT, 'checkpoints', exp, f'{pair}_s*.pt'))):

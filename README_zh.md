@@ -67,43 +67,111 @@ datasets/
 
 处理后的数据在第一次使用时缓存到 `./cache`。
 
-## 预训练模型
+## 预训练模型（v1.0 release）
 
-从 [v1.0 release](https://github.com/pengqianhan/ST-CRF-code/releases/tag/v1.0) 下载权重，在仓库根目录解压，
-文件会解压到 `checkpoints/<实验名>/<迁移对>_s<种子>.pt`。
+[v1.0 release](https://github.com/pengqianhan/ST-CRF-code/releases/tag/v1.0) 包含论文中全部模型的权重，分为三个压缩包，
+每个压缩包都解压到 `checkpoints/<实验名>/<迁移对>_s<种子>.pt`。
 
-| 文件 | 内容 | 大小 |
-|---|---|---:|
-| `stcrf-checkpoints-main.zip` | ST-CRF 及不使用步意图监督的版本，含使用和不使用地图两种设置（表 3–7） | 584 MB |
-| `stcrf-checkpoints-ablation.zip` | CE 损失、只在部分序列上使用 CRF 的消融（表 4、RQ5） | 520 MB |
-| `stcrf-checkpoints-multimodal.zip` | 多模态 leave-one-out 模型（表 7） | 74 MB |
+| 文件 | 包含的实验 | 用于 | 大小 |
+|---|---|---|---:|
+| `stcrf-checkpoints-main.zip` | `full_traj_lam03`、`full_mapf_lam03`、`none_traj`、`none_mapf` | 表 3、4、5、6 | 584 MB |
+| `stcrf-checkpoints-ablation.zip` | `fullce_*`、`obscrf_*`、`crf2_*` | 表 4、RQ5 | 520 MB |
+| `stcrf-checkpoints-multimodal.zip` | `stoch_*` | 表 7 | 74 MB |
+| `SHA256SUMS.txt` | 三个压缩包的校验值 | | |
+
+快速开始（在仓库根目录执行）：
 
 ```bash
-wget https://github.com/pengqianhan/ST-CRF-code/releases/download/v1.0/stcrf-checkpoints-main.zip
-unzip stcrf-checkpoints-main.zip
-sha256sum -c SHA256SUMS.txt --ignore-missing   # 可选，SHA256SUMS.txt 在 release 中
+URL=https://github.com/pengqianhan/ST-CRF-code/releases/download/v1.0
+for f in stcrf-checkpoints-main.zip stcrf-checkpoints-ablation.zip stcrf-checkpoints-multimodal.zip SHA256SUMS.txt; do
+  wget -nc "$URL/$f"
+done
+sha256sum -c SHA256SUMS.txt          # 每一行都应显示 OK
+for f in stcrf-checkpoints-*.zip; do unzip -q -n "$f"; done
+ls checkpoints                       # 应有 14 个实验文件夹
 ```
+
+也可以只下载需要的压缩包：复现表 3、5、6 只需要主模型包。没有下载全部压缩包时，用
+`sha256sum -c SHA256SUMS.txt --ignore-missing` 校验。
 
 ## 用权重复现论文表格
 
-`evaluate.py` 在每个 checkpoint 对应迁移对的测试集上评测，写入 `results/<实验名>/<迁移对>_s<种子>.json`；
-`summarize.py` 对种子取平均。整个过程不需要训练。
+请先准备数据（见[数据](#数据)）。`evaluate.py` 在每个 checkpoint 对应迁移对的测试集上评测，写入
+`results/<实验名>/<迁移对>_s<种子>.json`；`summarize.py` 输出各迁移对按种子取平均后的总体平均值，以及该平均值在种子之间的
+标准差。整个过程不需要训练，有 GPU 时自动使用 GPU。给 `summarize.py` 加上 `--pairs`，会按论文表格的列顺序
+（E2H、E2U、…、Z22Z1）打印每个迁移对的结果。
+
+下面的预期输出是论文中训练时得到的测试结果；用权重重新评测，应得到相同的数值（最后一位可能有舍入差异）。
+
+**表 3，以及表 4 的第一行和最后一行**（主模型包；20 个跨域迁移对，5 个种子）：
 
 ```bash
-# 表 3（ST-CRF）和表 4（消融）：20 个跨域迁移对
 python evaluate.py --exps full_traj_lam03 full_mapf_lam03 none_traj none_mapf
-python summarize.py full_traj_lam03 full_mapf_lam03 none_traj none_mapf --pairs
-
-# 表 5：SDD
-python evaluate.py --exps full_traj_lam03 none_traj --pairs A2S B2S C2S D2S E2S
-python summarize.py full_traj_lam03 none_traj --sdd --pairs
-
-# 表 6 和表 7：leave-one-out，单条预测和多模态（best-of-20）
-python evaluate.py --exps full_traj_lam03 full_mapf_lam03 stoch_full_traj stoch_full_mapf stoch_none_traj stoch_none_mapf --pairs eth hotel univ zara1 zara2
-python summarize.py full_traj_lam03 full_mapf_lam03 stoch_full_traj stoch_full_mapf stoch_none_traj stoch_none_mapf --loo --pairs
+python summarize.py full_traj_lam03 full_mapf_lam03 none_traj none_mapf
+```
+```
+experiment           seeds  average ADE/FDE  std over seeds
+full_traj_lam03          5    0.519/1.119     0.004/0.011
+full_mapf_lam03          5    0.472/0.934     0.003/0.002
+none_traj                5    0.528/1.132     0.002/0.006
+none_mapf                5    0.480/0.966     0.002/0.003
 ```
 
-`--pairs` 按论文表格的列顺序（E2H、E2U、…、Z22Z1）打印每个迁移对的结果。表 4 的其他消融用下表中的实验名以同样方式评测。
+**表 4 的消融行**（消融包；3 个种子）：
+
+```bash
+python evaluate.py --exps fullce_traj_l03 fullce_mapf_l03 obscrf_traj_l03 obscrf_mapf_l03 crf2_traj_lam03 crf2_mapf_l03
+python summarize.py fullce_traj_l03 fullce_mapf_l03 obscrf_traj_l03 obscrf_mapf_l03 crf2_traj_lam03 crf2_mapf_l03
+```
+```
+fullce_traj_l03          3    0.516/1.110     0.002/0.009
+fullce_mapf_l03          3    0.476/0.941     0.000/0.003
+obscrf_traj_l03          3    0.521/1.118     0.001/0.005
+obscrf_mapf_l03          3    0.474/0.946     0.001/0.003
+crf2_traj_lam03          3    0.519/1.118     0.002/0.007
+crf2_mapf_l03            3    0.473/0.936     0.002/0.004
+```
+
+**表 5，SDD**（主模型包；需要先准备 SDD 迁移对，见[数据](#数据)；5 个种子）：
+
+```bash
+python evaluate.py --exps full_traj_lam03 none_traj --pairs A2S B2S C2S D2S E2S
+python summarize.py full_traj_lam03 none_traj --sdd
+```
+```
+full_traj_lam03          5    0.641/1.300     0.003/0.010
+none_traj                5    0.639/1.301     0.000/0.004
+```
+
+**表 6，leave-one-out**（主模型包；3 个种子；ST-CRF 的结果在表 6 中，不使用步意图监督的版本在 RQ5 正文中引用）：
+
+```bash
+python evaluate.py --exps full_traj_lam03 full_mapf_lam03 none_traj none_mapf --pairs eth hotel univ zara1 zara2
+python summarize.py full_traj_lam03 full_mapf_lam03 none_traj none_mapf --loo
+```
+```
+full_traj_lam03          3    0.537/1.123     0.007/0.013
+full_mapf_lam03          3    0.484/0.953     0.003/0.013
+none_traj                3    0.535/1.114     0.002/0.001
+none_mapf                3    0.479/0.930     0.003/0.001
+```
+
+leave-one-out 下的消融：用消融包中的实验名，加上 `--pairs eth hotel univ zara1 zara2` 和 `--loo` 即可。
+
+**表 7，多模态 leave-one-out，best-of-20**（多模态包；3 个种子）：
+
+```bash
+python evaluate.py --exps stoch_full_traj stoch_full_mapf stoch_none_traj stoch_none_mapf --pairs eth hotel univ zara1 zara2
+python summarize.py stoch_full_traj stoch_full_mapf stoch_none_traj stoch_none_mapf --loo
+```
+```
+stoch_full_traj          3    0.214/0.367     0.002/0.006
+stoch_full_mapf          3    0.205/0.344     0.002/0.003
+stoch_none_traj          3    0.216/0.369     0.003/0.007
+stoch_none_mapf          3    0.206/0.335     0.001/0.004
+```
+
+实验名与论文中名称的对应：
 
 | 实验名 | 论文中的名称 |
 |---|---|
