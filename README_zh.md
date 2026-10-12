@@ -3,7 +3,7 @@
 [English](README.md)
 
 论文 *ST-CRF: Cross-Domain Pedestrian Trajectory Prediction via Step-Intention Learning with Conditional
-Random Fields*（Pengqian Han, Supratim Gupta, Jiamou Liu, Prakash Ranjitkar, Partha Roop；已投稿 IEEE Access）
+Random Fields*（Pengqian Han, Supratim Gupta, Jiamou Liu, Prakash Ranjitkar, Partha Roop）
 的官方代码和训练好的模型。
 
 ST-CRF 为行人轨迹的每一个观测步和未来步标注横向（直行 / 左转 / 右转）和纵向（匀速 / 减速 / 加速）的
@@ -227,15 +227,3 @@ summarize.py  按迁移对和总体对种子取平均
 Creative Commons Attribution-NonCommercial 4.0 International（署名—非商业性使用 4.0 国际）许可证，本仓库采用
 相同的许可证（[LICENSE](LICENSE)）。ETH/UCY 格式的 SDD 文件来自
 [Social-Implicit](https://github.com/abduallahmohamed/Social-Implicit)。
-
-## 引用
-
-```bibtex
-@article{han2026stcrf,
-  title   = {{ST-CRF}: Cross-Domain Pedestrian Trajectory Prediction via Step-Intention Learning with Conditional Random Fields},
-  author  = {Han, Pengqian and Gupta, Supratim and Liu, Jiamou and Ranjitkar, Prakash and Roop, Partha},
-  journal = {IEEE Access},
-  note    = {under review},
-  year    = {2026}
-}
-```

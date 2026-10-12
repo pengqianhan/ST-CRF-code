@@ -4,7 +4,7 @@
 
 Official code and trained models of the paper *ST-CRF: Cross-Domain Pedestrian Trajectory Prediction via
 Step-Intention Learning with Conditional Random Fields* (Pengqian Han, Supratim Gupta, Jiamou Liu,
-Prakash Ranjitkar, Partha Roop; submitted to IEEE Access).
+Prakash Ranjitkar, Partha Roop).
 
 ST-CRF labels every observed and future step of a pedestrian trajectory with a lateral (forward / turn left /
 turn right) and a longitudinal (keep speed / decelerate / accelerate) **step-intention**, computed
@@ -233,15 +233,3 @@ The trajectory normalization, singular space, data loading and scene-map adjustm
 released under the Creative Commons Attribution-NonCommercial 4.0 International license; this repository is
 released under the same license ([LICENSE](LICENSE)). The SDD files in ETH/UCY format are those of
 [Social-Implicit](https://github.com/abduallahmohamed/Social-Implicit).
-
-## Citation
-
-```bibtex
-@article{han2026stcrf,
-  title   = {{ST-CRF}: Cross-Domain Pedestrian Trajectory Prediction via Step-Intention Learning with Conditional Random Fields},
-  author  = {Han, Pengqian and Gupta, Supratim and Liu, Jiamou and Ranjitkar, Prakash and Roop, Partha},
-  journal = {IEEE Access},
-  note    = {under review},
-  year    = {2026}
-}
-```
